@@ -1,0 +1,32 @@
+# UE5 .gitignore
+
+# Built data
+Binaries/
+DerivedDataCache/
+Intermediate/
+Saved/
+
+# IDE
+.vs/
+.vscode/
+*.sln
+*.suo
+*.opensdf
+*.sdf
+*.VC.db
+*.VC.opendb
+
+# Plugin intermediates
+Plugins/**/Binaries/
+Plugins/**/Intermediate/
+
+# Compiled shaders
+*.shaderbin
+
+# Asset exports (optional - uncomment if you want to track)
+# *.uasset
+# *.umap
+
+# OS files
+.DS_Store
+Thumbs.db
