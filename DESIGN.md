@@ -1,8 +1,8 @@
-# AL_MovementLab - Movement System Design Document
+# AL_MovementLab - Design Document
 
 ## Overview
 
-Apex Legends-inspired momentum-based movement system for UE5. Built on `UCharacterMovementComponent` with first-person camera.
+Apex Legends-inspired momentum-based movement system and projectile weapon system for UE5. Built on `UCharacterMovementComponent` with first-person camera.
 
 ## Current Parameter Values
 
@@ -15,6 +15,9 @@ Apex Legends-inspired momentum-based movement system for UE5. Built on `UCharact
 | `CrouchWalkSpeed` | 400 | Speed while crouch walking |
 | `GravityScale` | 1.8 | Multiplier on world gravity |
 | `JumpZVelocity` | 800 | Initial jump velocity |
+| `BrakingDecelerationWalking` | 4000 | Quick direction changes |
+| `GroundFriction` | 8 | Ground movement friction |
+| `MaxAcceleration` | 4000 | Movement acceleration |
 
 ### Momentum System
 
@@ -61,6 +64,12 @@ Apex Legends-inspired momentum-based movement system for UE5. Built on `UCharact
 |-----------|-------|-------------|
 | `DoubleJumpZVelocity` | 900 | Velocity for second jump |
 
+### Air Strafe
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `AirStrafeStrength` | 1800 | Velocity added per second when strafing in air |
+
 ### Camera
 
 | Parameter | Value | Description |
@@ -69,6 +78,36 @@ Apex Legends-inspired momentum-based movement system for UE5. Built on `UCharact
 | `CrouchingCameraHeight` | 32 | Camera Z offset when crouching |
 | `CrouchCameraInterpSpeed` | 8 | Height transition speed |
 | `WallRunCameraTiltInterpSpeed` | 10 | Roll transition speed |
+
+### Weapon System
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `FireRate` | 600 | Rounds per minute |
+| `HipfireSpread` | 2 | Spread in degrees when hipfiring |
+| `AimTraceDistance` | 50000 | Max distance for aim trace (500m) |
+| `ProjectileSpeed` | 18000 | Bullet travel speed |
+| `ProjectileGravityScale` | 0.3 | Bullet drop (1.0 = normal gravity) |
+| `Damage` | 18 | Damage per hit |
+
+### Weapon Positioning
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `HipfireOffset` | (30, 20, -15) | Weapon position when hipfiring |
+| `ADSOffset` | (30, 0, -16) | Weapon position when ADS |
+| `ADSInterpSpeed` | 15 | Hipfire/ADS transition speed |
+| `StowedOffset` | (20, 20, -40) | Weapon position when stowed |
+| `StowedRotation` | (45, -90, 0) | Weapon rotation when stowed |
+| `StowInterpSpeed` | 12 | Stow/draw transition speed |
+
+### Weapon Recoil
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `RecoilKick` | (-3, 0, 1) | Positional kick per shot (back, right, up) |
+| `RecoilRotation` | (-2, 0, 0) | Rotational kick per shot (pitch, yaw, roll) |
+| `RecoilRecoverySpeed` | 15 | How fast recoil recovers |
 
 ## Movement States
 
@@ -105,6 +144,32 @@ Apex Legends-inspired momentum-based movement system for UE5. Built on `UCharact
 └─────────────┘ Land
 ```
 
+## Weapon States
+
+```
+┌──────────────────┐
+│  DRAWN (Hipfire) │◄──────────────────┐
+└────────┬─────────┘                   │
+         │                             │
+         │ Hold Right Mouse            │ Press 1
+         ▼                             │
+┌──────────────────┐                   │
+│       ADS        │                   │
+└────────┬─────────┘                   │
+         │                             │
+         │ Release Right Mouse         │
+         ▼                             │
+┌──────────────────┐                   │
+│  DRAWN (Hipfire) │                   │
+└────────┬─────────┘                   │
+         │                             │
+         │ Press 3                     │
+         ▼                             │
+┌──────────────────┐                   │
+│      STOWED      │───────────────────┘
+└──────────────────┘
+```
+
 ## Input Bindings (Legacy Input System)
 
 | Action | Key | Function |
@@ -116,6 +181,10 @@ Apex Legends-inspired momentum-based movement system for UE5. Built on `UCharact
 | Sprint | Left Shift | Hold to sprint |
 | Jump | Space | Jump / Double jump / Wall jump |
 | Crouch | Left Ctrl | Crouch / Slide |
+| Fire | Left Mouse | Shoot (hold for auto) |
+| ADS | Right Mouse | Aim down sights (hold) |
+| DrawWeapon | 1 | Draw primary weapon |
+| StowWeapon | 3 | Stow weapon |
 
 ## State Transition Rules
 
@@ -132,6 +201,11 @@ Apex Legends-inspired momentum-based movement system for UE5. Built on `UCharact
 ### Double Jump
 - **Available**: Airborne + Haven't double jumped yet + Not wall running
 - **Reset**: On landing OR after wall jump
+
+### Weapon Firing
+- **Hipfire**: Projectile spawns from barrel tip, direction calculated toward crosshair aim point
+- **ADS**: Projectile spawns from camera center, straight forward, no spread
+- **Stowed**: Cannot fire or ADS
 
 ## Debug Display
 
@@ -152,6 +226,7 @@ Enabled via `bDrawMomentumDebug = true`. Shows:
 - First-person camera setup
 - Input handling and routing
 - Camera height/tilt interpolation
+- Weapon spawning and management
 - Tracks `bWantsToMoveForward` for wall run detection
 
 **UALCharacterMovementComponent** (`ALCharacterMovementComponent.h/.cpp`)
@@ -160,6 +235,17 @@ Enabled via `bDrawMomentumDebug = true`. Shows:
 - Public API: `SetIsSprinting()`, `StartCrouch()`, `StopCrouch()`, `TryWallRun()`, `WallJump()`, `DoubleJump()`
 - Private internals: `StartGroundSlide()`, `StartAirSlide()`, `StartWallRun()`, `StopWallRun()`, etc.
 
+**AALWeapon** (`ALWeapon.h/.cpp`)
+- Projectile-based weapon actor
+- Hipfire/ADS/Stowed states with smooth transitions
+- Visual recoil system
+- Public API: `Fire()`, `StartFire()`, `StopFire()`, `StartADS()`, `StopADS()`, `Stow()`, `Draw()`
+
+**AALProjectile** (`ALProjectile.h/.cpp`)
+- Bullet actor with physics
+- Uses UProjectileMovementComponent
+- Travel time, gravity drop, hit detection
+
 ### Key Implementation Details
 
 1. **Engine crouch disabled** (`bCanCrouch = false`) to prevent capsule resize jitter
@@ -167,6 +253,9 @@ Enabled via `bDrawMomentumDebug = true`. Shows:
 3. **Wall detection** - Line traces left/right from character center
 4. **Air slide deferred** - Impulse stored and applied in `ProcessLanded()`
 5. **BeginPlay override** - Forces gravity/jump values to override Blueprint defaults
+6. **Weapon attached to camera** - Position/rotation managed by weapon's Tick
+7. **Hipfire aim trace** - Line trace from camera finds aim point, projectile direction calculated from muzzle to that point
+8. **Visual recoil** - Additive offset/rotation that recovers over time
 
 ## Future Considerations
 
@@ -175,3 +264,8 @@ Enabled via `bDrawMomentumDebug = true`. Shows:
 - Wall run on tagged surfaces only
 - Mantling / ledge grab
 - Bunny hop timing bonus
+- Weapon switching / multiple weapons
+- Ammo system
+- Reload animation
+- Muzzle flash / tracers
+- Camera recoil (screen shake)
