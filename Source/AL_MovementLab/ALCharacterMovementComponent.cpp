@@ -74,6 +74,9 @@ UALCharacterMovementComponent::UALCharacterMovementComponent()
 	// Double jump
 	DoubleJumpZVelocity = 900.f;
 	bHasDoubleJumped = false;
+
+	// Air strafe
+	AirStrafeStrength = 1800.f;
 }
 
 void UALCharacterMovementComponent::BeginPlay()
@@ -143,6 +146,22 @@ void UALCharacterMovementComponent::TickComponent(
 	if (bIsWallRunning)
 	{
 		UpdateWallRun(DeltaTime);
+	}
+
+	// ---- AIR STRAFE ----
+	if (!IsMovingOnGround() && !bIsWallRunning)
+	{
+		const FVector Input = GetLastInputVector();
+		const float RightInput = FVector::DotProduct(Input, GetOwner()->GetActorRightVector());
+
+		if (FMath::Abs(RightInput) > 0.1f)
+		{
+			// Get the world-space right direction based on where player is looking
+			const FVector StrafeDir = GetOwner()->GetActorRightVector();
+
+			// Nudge velocity in strafe direction
+			Velocity += StrafeDir * RightInput * AirStrafeStrength * DeltaTime;
+		}
 	}
 
 	// Tick down wall run cooldown

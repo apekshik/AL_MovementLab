@@ -179,6 +179,11 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Jump")
 	bool bHasDoubleJumped;
 
+	// ---- Air Strafe ----
+	/** How much velocity to add per second when strafing in air */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|AirStrafe")
+	float AirStrafeStrength;
+
 private:
 	void StartGroundSlide();
 	void StartAirSlide();
