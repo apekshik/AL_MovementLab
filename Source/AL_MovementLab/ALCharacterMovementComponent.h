@@ -14,6 +14,8 @@ class AL_MOVEMENTLAB_API UALCharacterMovementComponent : public UCharacterMoveme
 public:
 	UALCharacterMovementComponent();
 
+	virtual void BeginPlay() override;
+
 	virtual void TickComponent(
 		float DeltaTime,
 		enum ELevelTick TickType,
@@ -27,6 +29,18 @@ public:
 	void StopCrouch();
 	bool IsSliding() const { return bIsSliding; }
 	bool IsCrouchWalking() const { return bIsCrouchWalking; }
+
+	// ---- Wall Run Public API ----
+	void TryWallRun();
+	void WallJump();
+	bool IsWallRunning() const { return bIsWallRunning; }
+	bool IsWallRunningOnRightSide() const { return bWallRunIsRightSide; }
+	FVector GetWallRunNormal() const { return WallRunNormal; }
+	float GetWallRunCameraTilt() const { return WallRunCameraTilt; }
+
+	// ---- Double Jump Public API ----
+	bool CanDoubleJump() const;
+	void DoubleJump();
 
 protected:
 	// ---- Momentum ----
@@ -115,10 +129,65 @@ protected:
 	float PendingSlideImpulse;
 	FVector PendingSlideDirection;
 
+	// ---- Wall Run ----
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|WallRun")
+	bool bIsWallRunning;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|WallRun")
+	bool bWallRunIsRightSide;
+
+	/** Minimum speed to initiate wall run */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|WallRun")
+	float MinSpeedToWallRun;
+
+	/** Speed while wall running */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|WallRun")
+	float WallRunSpeed;
+
+	/** How far to trace for walls (from character center) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|WallRun")
+	float WallRunTraceDistance;
+
+	/** Gravity scale while wall running (0 = no gravity) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|WallRun")
+	float WallRunGravityScale;
+
+	/** How vertical the wall must be (1.0 = perfectly vertical, 0.9 = slight slope allowed) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|WallRun")
+	float WallRunMinVerticalNormal;
+
+	/** Horizontal impulse strength when wall jumping */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|WallRun")
+	float WallJumpHorizontalStrength;
+
+	/** Vertical impulse strength when wall jumping */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|WallRun")
+	float WallJumpVerticalStrength;
+
+	/** Camera roll angle when wall running (degrees) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|WallRun")
+	float WallRunCameraTilt;
+
+	FVector WallRunNormal;
+	float SavedGravityScale;
+	float WallRunCooldownTimer;
+
+	// ---- Double Jump ----
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Movement|Jump")
+	float DoubleJumpZVelocity;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Movement|Jump")
+	bool bHasDoubleJumped;
+
 private:
 	void StartGroundSlide();
 	void StartAirSlide();
 	void StopSlide();
 	void StartCrouchWalk();
 	void StopCrouchWalk();
+
+	bool CheckWall(bool bCheckRight, FHitResult& OutHit);
+	void StartWallRun(const FHitResult& WallHit, bool bIsRightSide);
+	void StopWallRun();
+	void UpdateWallRun(float DeltaTime);
 };

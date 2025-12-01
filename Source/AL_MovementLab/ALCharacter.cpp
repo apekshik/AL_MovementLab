@@ -4,6 +4,7 @@
 #include "ALCharacterMovementComponent.h"
 
 #include "GameFramework/Controller.h"
+#include "GameFramework/PlayerController.h"
 #include "Camera/CameraComponent.h"
 
 AALCharacter::AALCharacter(const FObjectInitializer& ObjectInitializer)
@@ -29,7 +30,10 @@ AALCharacter::AALCharacter(const FObjectInitializer& ObjectInitializer)
 	FirstPersonCamera->bUsePawnControlRotation = true;
 
 	TargetCameraHeight = StandingCameraHeight;
+	TargetCameraRoll = 0.f;
+	CurrentCameraRoll = 0.f;
 	bIsCrouching = false;
+	bWantsToMoveForward = false;
 }
 
 void AALCharacter::BeginPlay()
@@ -49,6 +53,16 @@ void AALCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// Try to wall run if holding forward and airborne
+	if (bWantsToMoveForward)
+	{
+		if (UALCharacterMovementComponent* ALMove = GetALMovementComponent())
+		{
+			ALMove->TryWallRun();
+		}
+	}
+
+	// Camera height interpolation
 	if (FirstPersonCamera)
 	{
 		FVector CamLoc = FirstPersonCamera->GetRelativeLocation();
@@ -59,6 +73,9 @@ void AALCharacter::Tick(float DeltaTime)
 			FirstPersonCamera->SetRelativeLocation(CamLoc);
 		}
 	}
+
+	// Camera tilt for wall running
+	UpdateCameraTilt(DeltaTime);
 }
 
 void AALCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -74,8 +91,8 @@ void AALCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 	PlayerInputComponent->BindAction("Sprint", IE_Pressed, this, &AALCharacter::StartSprint);
 	PlayerInputComponent->BindAction("Sprint", IE_Released, this, &AALCharacter::StopSprint);
 
-	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &ACharacter::Jump);
-	PlayerInputComponent->BindAction("Jump", IE_Released, this, &ACharacter::StopJumping);
+	PlayerInputComponent->BindAction("Jump", IE_Pressed, this, &AALCharacter::OnJumpPressed);
+	PlayerInputComponent->BindAction("Jump", IE_Released, this, &AALCharacter::OnJumpReleased);
 
 	PlayerInputComponent->BindAction("Crouch", IE_Pressed, this, &AALCharacter::StartCrouch);
 	PlayerInputComponent->BindAction("Crouch", IE_Released, this, &AALCharacter::StopCrouch);
@@ -85,6 +102,9 @@ void AALCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 
 void AALCharacter::MoveForward(float Value)
 {
+	// Track if player is holding forward for wall run detection
+	bWantsToMoveForward = (Value > 0.f);
+
 	if (Controller && Value != 0.0f)
 	{
 		const FRotator ControlRot = Controller->GetControlRotation();
@@ -174,4 +194,70 @@ void AALCharacter::StopCrouch()
 UALCharacterMovementComponent* AALCharacter::GetALMovementComponent() const
 {
 	return Cast<UALCharacterMovementComponent>(GetCharacterMovement());
+}
+
+// ---- Jump / Wall Jump ----
+
+void AALCharacter::OnJumpPressed()
+{
+	if (UALCharacterMovementComponent* ALMove = GetALMovementComponent())
+	{
+		// Wall jump takes priority
+		if (ALMove->IsWallRunning())
+		{
+			ALMove->WallJump();
+			return;
+		}
+
+		// Try double jump if airborne
+		if (ALMove->CanDoubleJump())
+		{
+			ALMove->DoubleJump();
+			return;
+		}
+	}
+
+	Jump();
+}
+
+void AALCharacter::OnJumpReleased()
+{
+	StopJumping();
+}
+
+// ---- Camera Tilt ----
+
+void AALCharacter::UpdateCameraTilt(float DeltaTime)
+{
+	UALCharacterMovementComponent* ALMove = GetALMovementComponent();
+	if (!ALMove || !Controller)
+	{
+		return;
+	}
+
+	// Determine target roll based on wall run state
+	if (ALMove->IsWallRunning())
+	{
+		float TiltAngle = ALMove->GetWallRunCameraTilt();
+		// Tilt toward the wall (right wall = positive roll, left wall = negative roll)
+		TargetCameraRoll = ALMove->IsWallRunningOnRightSide() ? TiltAngle : -TiltAngle;
+	}
+	else
+	{
+		TargetCameraRoll = 0.f;
+	}
+
+	// Interpolate current roll toward target
+	if (!FMath::IsNearlyEqual(CurrentCameraRoll, TargetCameraRoll, 0.1f))
+	{
+		CurrentCameraRoll = FMath::FInterpTo(CurrentCameraRoll, TargetCameraRoll, DeltaTime, WallRunCameraTiltInterpSpeed);
+
+		// Apply roll to controller
+		if (APlayerController* PC = Cast<APlayerController>(Controller))
+		{
+			FRotator ControlRot = PC->GetControlRotation();
+			ControlRot.Roll = CurrentCameraRoll;
+			PC->SetControlRotation(ControlRot);
+		}
+	}
 }

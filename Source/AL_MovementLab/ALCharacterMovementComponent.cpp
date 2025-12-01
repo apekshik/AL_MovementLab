@@ -19,13 +19,13 @@ UALCharacterMovementComponent::UALCharacterMovementComponent()
 	bDrawMomentumDebug = true;
 
 	// Sprint defaults
-	WalkSpeed = 600.f;
-	SprintSpeed = 900.f;
+	WalkSpeed = 800.f;
+	SprintSpeed = 1200.f;
 	SprintMomentumMultiplier = 1.4f;
 	bIsSprinting = false;
 
 	// Crouch walk defaults
-	CrouchWalkSpeed = 300.f;
+	CrouchWalkSpeed = 400.f;
 	bIsCrouchWalking = false;
 
 	// Slide defaults
@@ -46,11 +46,44 @@ UALCharacterMovementComponent::UALCharacterMovementComponent()
 	SavedGroundFriction = 0.f;
 	SavedBrakingDecel = 0.f;
 
+	// Wall run defaults
+	bIsWallRunning = false;
+	bWallRunIsRightSide = false;
+	MinSpeedToWallRun = 400.f;
+	WallRunSpeed = 1100.f;
+	WallRunTraceDistance = 75.f;
+	WallRunGravityScale = 0.f;
+	WallRunMinVerticalNormal = 0.9f;
+	WallJumpHorizontalStrength = 400.f;
+	WallJumpVerticalStrength = 150.f;  // Extra boost on top of normal jump
+	WallRunCameraTilt = 7.f;
+	WallRunNormal = FVector::ZeroVector;
+	SavedGravityScale = 1.8f;
+	WallRunCooldownTimer = 0.f;
+
 	// Set initial walking speed
 	MaxWalkSpeed = WalkSpeed;
 
 	// Disable engine crouch
 	NavAgentProps.bCanCrouch = false;
+
+	// Stronger gravity and higher jump
+	GravityScale = 1.8f;
+	JumpZVelocity = 800.f;
+
+	// Double jump
+	DoubleJumpZVelocity = 900.f;
+	bHasDoubleJumped = false;
+}
+
+void UALCharacterMovementComponent::BeginPlay()
+{
+	Super::BeginPlay();
+
+	// Force these values at runtime to override any Blueprint defaults
+	GravityScale = 1.8f;
+	JumpZVelocity = 800.f;
+	MaxWalkSpeed = WalkSpeed;
 }
 
 void UALCharacterMovementComponent::TickComponent(
@@ -106,6 +139,18 @@ void UALCharacterMovementComponent::TickComponent(
 		StartCrouchWalk();
 	}
 
+	// ---- WALL RUN UPDATE ----
+	if (bIsWallRunning)
+	{
+		UpdateWallRun(DeltaTime);
+	}
+
+	// Tick down wall run cooldown
+	if (WallRunCooldownTimer > 0.f)
+	{
+		WallRunCooldownTimer -= DeltaTime;
+	}
+
 	// ---- DEBUG DISPLAY ----
 
 #if WITH_EDITOR
@@ -119,7 +164,11 @@ void UALCharacterMovementComponent::TickComponent(
 		const FString SprintState = bIsSprinting ? TEXT("Sprinting") : TEXT("Walking");
 
 		FString MoveState;
-		if (bIsSliding)
+		if (bIsWallRunning)
+		{
+			MoveState = FString::Printf(TEXT("Wall Run (%s)"), bWallRunIsRightSide ? TEXT("RIGHT") : TEXT("LEFT"));
+		}
+		else if (bIsSliding)
 		{
 			if (bPendingSlideOnLand)
 			{
@@ -411,6 +460,15 @@ void UALCharacterMovementComponent::StopSlide()
 
 void UALCharacterMovementComponent::ProcessLanded(const FHitResult& Hit, float remainingTime, int32 Iterations)
 {
+	// Stop wall run when landing
+	if (bIsWallRunning)
+	{
+		StopWallRun();
+	}
+
+	// Reset double jump
+	bHasDoubleJumped = false;
+
 	Super::ProcessLanded(Hit, remainingTime, Iterations);
 
 	if (bPendingSlideOnLand && bIsSliding)
@@ -424,4 +482,223 @@ void UALCharacterMovementComponent::ProcessLanded(const FHitResult& Hit, float r
 		PendingSlideImpulse = 0.f;
 		PendingSlideDirection = FVector::ZeroVector;
 	}
+}
+
+// ---- Wall Run ----
+
+bool UALCharacterMovementComponent::CheckWall(bool bCheckRight, FHitResult& OutHit)
+{
+	if (!GetOwner())
+	{
+		return false;
+	}
+
+	const FVector Start = GetActorLocation();
+	const FVector Right = GetOwner()->GetActorRightVector();
+	const FVector TraceDir = bCheckRight ? Right : -Right;
+	const FVector End = Start + TraceDir * WallRunTraceDistance;
+
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(GetOwner());
+
+	bool bHit = GetWorld()->LineTraceSingleByChannel(
+		OutHit,
+		Start,
+		End,
+		ECC_Visibility,
+		QueryParams
+	);
+
+	if (bHit)
+	{
+		// Check if wall is vertical enough (normal should be mostly horizontal)
+		const float VerticalComponent = FMath::Abs(OutHit.ImpactNormal.Z);
+		if (VerticalComponent > (1.f - WallRunMinVerticalNormal))
+		{
+			return false;
+		}
+	}
+
+	return bHit;
+}
+
+void UALCharacterMovementComponent::TryWallRun()
+{
+	// Already wall running, grounded, or on cooldown - can't start
+	if (bIsWallRunning || IsMovingOnGround() || WallRunCooldownTimer > 0.f)
+	{
+		return;
+	}
+
+	const float Speed2D = Velocity.Size2D();
+	if (Speed2D < MinSpeedToWallRun)
+	{
+		return;
+	}
+
+	FHitResult RightHit, LeftHit;
+	bool bRightWall = CheckWall(true, RightHit);
+	bool bLeftWall = CheckWall(false, LeftHit);
+
+	// Prefer the wall we're moving toward
+	if (bRightWall && bLeftWall)
+	{
+		const FVector VelDir = Velocity.GetSafeNormal2D();
+		const float RightDot = FVector::DotProduct(VelDir, -RightHit.ImpactNormal);
+		const float LeftDot = FVector::DotProduct(VelDir, -LeftHit.ImpactNormal);
+
+		if (RightDot > LeftDot)
+		{
+			bLeftWall = false;
+		}
+		else
+		{
+			bRightWall = false;
+		}
+	}
+
+	if (bRightWall)
+	{
+		StartWallRun(RightHit, true);
+	}
+	else if (bLeftWall)
+	{
+		StartWallRun(LeftHit, false);
+	}
+}
+
+void UALCharacterMovementComponent::StartWallRun(const FHitResult& WallHit, bool bIsRightSide)
+{
+	if (bIsWallRunning)
+	{
+		return;
+	}
+
+	bIsWallRunning = true;
+	bWallRunIsRightSide = bIsRightSide;
+	WallRunNormal = WallHit.ImpactNormal;
+
+	// Save and modify gravity
+	SavedGravityScale = GravityScale;
+	GravityScale = WallRunGravityScale;
+
+	// Set movement mode to falling (we handle the physics)
+	SetMovementMode(MOVE_Falling);
+
+	// Calculate wall run direction (along the wall, in the direction we were moving)
+	FVector WallRunDir = FVector::CrossProduct(WallRunNormal, FVector::UpVector);
+
+	// Make sure we run in the direction we were moving
+	if (FVector::DotProduct(WallRunDir, Velocity) < 0.f)
+	{
+		WallRunDir = -WallRunDir;
+	}
+
+	// Set velocity along the wall
+	Velocity = WallRunDir * WallRunSpeed;
+}
+
+void UALCharacterMovementComponent::StopWallRun()
+{
+	if (!bIsWallRunning)
+	{
+		return;
+	}
+
+	bIsWallRunning = false;
+	WallRunNormal = FVector::ZeroVector;
+
+	// Restore gravity
+	GravityScale = SavedGravityScale;
+}
+
+void UALCharacterMovementComponent::UpdateWallRun(float DeltaTime)
+{
+	if (!bIsWallRunning)
+	{
+		return;
+	}
+
+	// Check if still next to wall
+	FHitResult WallHit;
+	bool bStillOnWall = CheckWall(bWallRunIsRightSide, WallHit);
+
+	if (!bStillOnWall)
+	{
+		StopWallRun();
+		return;
+	}
+
+	// Update wall normal in case wall curves
+	WallRunNormal = WallHit.ImpactNormal;
+
+	// Maintain velocity along the wall
+	FVector WallRunDir = FVector::CrossProduct(WallRunNormal, FVector::UpVector);
+
+	if (FVector::DotProduct(WallRunDir, Velocity) < 0.f)
+	{
+		WallRunDir = -WallRunDir;
+	}
+
+	// Keep Z velocity at 0 (no falling while wall running)
+	Velocity.Z = 0.f;
+
+	// Maintain speed along wall
+	FVector HorizontalVel = Velocity;
+	HorizontalVel.Z = 0.f;
+
+	if (HorizontalVel.Size() < WallRunSpeed)
+	{
+		Velocity = WallRunDir * WallRunSpeed;
+	}
+}
+
+void UALCharacterMovementComponent::WallJump()
+{
+	if (!bIsWallRunning)
+	{
+		return;
+	}
+
+	// Preserve forward velocity along the wall
+	FVector ForwardVel = Velocity;
+	ForwardVel.Z = 0.f;
+
+	// Add push away from wall
+	FVector AwayFromWall = WallRunNormal * WallJumpHorizontalStrength;
+
+	// Combine: forward momentum + away from wall + extra vertical if specified
+	FVector JumpVel = ForwardVel + AwayFromWall;
+	JumpVel.Z = JumpZVelocity + WallJumpVerticalStrength;  // Use normal jump height + any extra
+
+	StopWallRun();
+
+	// Prevent immediately re-attaching to the same wall
+	WallRunCooldownTimer = 0.2f;
+
+	// Reset double jump so player can double jump after wall jump
+	bHasDoubleJumped = false;
+
+	// Apply the jump velocity directly
+	Velocity = JumpVel;
+}
+
+// ---- Double Jump ----
+
+bool UALCharacterMovementComponent::CanDoubleJump() const
+{
+	return !IsMovingOnGround() && !bHasDoubleJumped && !bIsWallRunning;
+}
+
+void UALCharacterMovementComponent::DoubleJump()
+{
+	if (!CanDoubleJump())
+	{
+		return;
+	}
+
+	bHasDoubleJumped = true;
+
+	// Reset vertical velocity and apply double jump
+	Velocity.Z = DoubleJumpZVelocity;
 }

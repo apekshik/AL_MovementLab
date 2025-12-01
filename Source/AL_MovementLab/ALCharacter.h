@@ -39,8 +39,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Crouch")
 	float CrouchCameraInterpSpeed = 8.f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|WallRun")
+	float WallRunCameraTiltInterpSpeed = 10.f;
+
 	float TargetCameraHeight;
+	float TargetCameraRoll;
+	float CurrentCameraRoll;
 	bool bIsCrouching;
+	bool bWantsToMoveForward;
 
 	// ---- Input Handlers ----
 	void MoveForward(float Value);
@@ -53,4 +59,9 @@ protected:
 
 	void StartCrouch();
 	void StopCrouch();
+
+	void OnJumpPressed();
+	void OnJumpReleased();
+
+	void UpdateCameraTilt(float DeltaTime);
 };
