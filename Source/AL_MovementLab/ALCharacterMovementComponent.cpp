@@ -64,6 +64,11 @@ UALCharacterMovementComponent::UALCharacterMovementComponent()
 	// Set initial walking speed
 	MaxWalkSpeed = WalkSpeed;
 
+	// Snappy ground movement - high decel for quick direction changes
+	BrakingDecelerationWalking = 4000.f;
+	GroundFriction = 8.f;
+	MaxAcceleration = 4000.f;
+
 	// Disable engine crouch
 	NavAgentProps.bCanCrouch = false;
 
