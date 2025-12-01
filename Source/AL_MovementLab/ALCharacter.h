@@ -71,6 +71,8 @@ protected:
 	void StopFire();
 	void StartADS();
 	void StopADS();
+	void DrawWeapon();
+	void StowWeapon();
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
 	TSubclassOf<AALWeapon> WeaponClass;

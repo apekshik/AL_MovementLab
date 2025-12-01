@@ -106,6 +106,9 @@ void AALCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 
 	PlayerInputComponent->BindAction("ADS", IE_Pressed, this, &AALCharacter::StartADS);
 	PlayerInputComponent->BindAction("ADS", IE_Released, this, &AALCharacter::StopADS);
+
+	PlayerInputComponent->BindAction("DrawWeapon", IE_Pressed, this, &AALCharacter::DrawWeapon);
+	PlayerInputComponent->BindAction("StowWeapon", IE_Pressed, this, &AALCharacter::StowWeapon);
 }
 
 // ---- Movement ----
@@ -303,6 +306,22 @@ void AALCharacter::StopADS()
 	if (CurrentWeapon)
 	{
 		CurrentWeapon->StopADS();
+	}
+}
+
+void AALCharacter::DrawWeapon()
+{
+	if (CurrentWeapon)
+	{
+		CurrentWeapon->Draw();
+	}
+}
+
+void AALCharacter::StowWeapon()
+{
+	if (CurrentWeapon)
+	{
+		CurrentWeapon->Stow();
 	}
 }
 

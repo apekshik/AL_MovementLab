@@ -28,8 +28,13 @@ public:
 	void StartADS();
 	void StopADS();
 
+	/** Stow/draw weapon */
+	void Stow();
+	void Draw();
+
 	bool IsFiring() const { return bIsFiring; }
 	bool IsADS() const { return bIsADS; }
+	bool IsStowed() const { return bIsStowed; }
 
 protected:
 	virtual void BeginPlay() override;
@@ -69,6 +74,21 @@ protected:
 	/** How fast weapon moves between hipfire and ADS positions */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Position")
 	float ADSInterpSpeed;
+
+	/** Weapon position when stowed (off screen) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Position")
+	FVector StowedOffset;
+
+	/** Weapon rotation when stowed */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Position")
+	FRotator StowedRotation;
+
+	/** How fast weapon stows/draws */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Position")
+	float StowInterpSpeed;
+
+	/** Is weapon stowed */
+	bool bIsStowed;
 
 	// ---- Recoil ----
 

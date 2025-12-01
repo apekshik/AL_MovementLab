@@ -29,6 +29,12 @@ AALWeapon::AALWeapon()
 	ADSOffset = FVector(30.f, 0.f, -16.f);  // Centered
 	ADSInterpSpeed = 15.f;
 
+	// Stow positioning
+	StowedOffset = FVector(20.f, 20.f, -40.f);  // Down and to the side
+	StowedRotation = FRotator(45.f, -90.f, 0.f);  // Rotated down
+	StowInterpSpeed = 12.f;
+	bIsStowed = false;
+
 	// Recoil
 	RecoilKick = FVector(-3.f, 0.f, 1.f);  // Kick back and up
 	RecoilRotation = FRotator(-2.f, 0.f, 0.f);  // Pitch up
@@ -51,8 +57,8 @@ void AALWeapon::Tick(float DeltaTime)
 
 	TimeSinceLastShot += DeltaTime;
 
-	// Auto-fire if trigger is held
-	if (bIsFiring && TimeSinceLastShot >= TimeBetweenShots)
+	// Auto-fire if trigger is held (only if not stowed)
+	if (bIsFiring && !bIsStowed && TimeSinceLastShot >= TimeBetweenShots)
 	{
 		Fire();
 	}
@@ -61,18 +67,32 @@ void AALWeapon::Tick(float DeltaTime)
 	CurrentRecoilOffset = FMath::VInterpTo(CurrentRecoilOffset, FVector::ZeroVector, DeltaTime, RecoilRecoverySpeed);
 	CurrentRecoilRotation = FMath::RInterpTo(CurrentRecoilRotation, FRotator::ZeroRotator, DeltaTime, RecoilRecoverySpeed);
 
-	// Interpolate weapon position between hipfire and ADS, plus recoil
-	FVector TargetOffset = (bIsADS ? ADSOffset : HipfireOffset) + CurrentRecoilOffset;
-	FVector CurrentOffset = GetRootComponent()->GetRelativeLocation();
+	// Determine target position and rotation based on state
+	FVector TargetOffset;
+	FRotator TargetRotation;
+	float InterpSpeed;
 
-	FVector NewOffset = FMath::VInterpTo(CurrentOffset, TargetOffset, DeltaTime, ADSInterpSpeed);
+	if (bIsStowed)
+	{
+		TargetOffset = StowedOffset;
+		TargetRotation = StowedRotation;
+		InterpSpeed = StowInterpSpeed;
+	}
+	else
+	{
+		TargetOffset = (bIsADS ? ADSOffset : HipfireOffset) + CurrentRecoilOffset;
+		TargetRotation = FRotator(0.f, -90.f, 0.f) + CurrentRecoilRotation;
+		InterpSpeed = bIsADS ? ADSInterpSpeed : StowInterpSpeed;
+	}
+
+	// Interpolate position
+	FVector CurrentOffset = GetRootComponent()->GetRelativeLocation();
+	FVector NewOffset = FMath::VInterpTo(CurrentOffset, TargetOffset, DeltaTime, InterpSpeed);
 	SetActorRelativeLocation(NewOffset);
 
-	// Apply recoil rotation to mesh (additive to base rotation)
-	FRotator BaseRotation = FRotator(0.f, -90.f, 0.f);
+	// Interpolate rotation
 	FRotator CurrentMeshRot = WeaponMesh->GetRelativeRotation();
-	FRotator TargetMeshRot = BaseRotation + CurrentRecoilRotation;
-	WeaponMesh->SetRelativeRotation(FMath::RInterpTo(CurrentMeshRot, TargetMeshRot, DeltaTime, RecoilRecoverySpeed));
+	WeaponMesh->SetRelativeRotation(FMath::RInterpTo(CurrentMeshRot, TargetRotation, DeltaTime, InterpSpeed));
 }
 
 void AALWeapon::ApplyRecoil()
@@ -105,6 +125,18 @@ void AALWeapon::StartADS()
 void AALWeapon::StopADS()
 {
 	bIsADS = false;
+}
+
+void AALWeapon::Stow()
+{
+	bIsStowed = true;
+	bIsFiring = false;  // Stop firing when stowing
+	bIsADS = false;     // Exit ADS when stowing
+}
+
+void AALWeapon::Draw()
+{
+	bIsStowed = false;
 }
 
 FVector AALWeapon::GetAimPoint(APlayerController* PC) const
