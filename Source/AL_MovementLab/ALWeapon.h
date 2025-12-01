@@ -70,6 +70,29 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Position")
 	float ADSInterpSpeed;
 
+	// ---- Recoil ----
+
+	/** Positional kick when firing (backward, up) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil")
+	FVector RecoilKick;
+
+	/** Rotational kick when firing (pitch up) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil")
+	FRotator RecoilRotation;
+
+	/** How fast recoil recovers */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil")
+	float RecoilRecoverySpeed;
+
+	/** Current recoil offset being applied */
+	FVector CurrentRecoilOffset;
+
+	/** Current recoil rotation being applied */
+	FRotator CurrentRecoilRotation;
+
+	/** Apply recoil kick */
+	void ApplyRecoil();
+
 	/** Time between shots */
 	float TimeBetweenShots;
 

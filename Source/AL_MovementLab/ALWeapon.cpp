@@ -28,6 +28,13 @@ AALWeapon::AALWeapon()
 	HipfireOffset = FVector(30.f, 20.f, -15.f);
 	ADSOffset = FVector(30.f, 0.f, -16.f);  // Centered
 	ADSInterpSpeed = 15.f;
+
+	// Recoil
+	RecoilKick = FVector(-3.f, 0.f, 1.f);  // Kick back and up
+	RecoilRotation = FRotator(-2.f, 0.f, 0.f);  // Pitch up
+	RecoilRecoverySpeed = 15.f;
+	CurrentRecoilOffset = FVector::ZeroVector;
+	CurrentRecoilRotation = FRotator::ZeroRotator;
 }
 
 void AALWeapon::BeginPlay()
@@ -50,15 +57,28 @@ void AALWeapon::Tick(float DeltaTime)
 		Fire();
 	}
 
-	// Interpolate weapon position between hipfire and ADS
-	FVector TargetOffset = bIsADS ? ADSOffset : HipfireOffset;
+	// Recover recoil
+	CurrentRecoilOffset = FMath::VInterpTo(CurrentRecoilOffset, FVector::ZeroVector, DeltaTime, RecoilRecoverySpeed);
+	CurrentRecoilRotation = FMath::RInterpTo(CurrentRecoilRotation, FRotator::ZeroRotator, DeltaTime, RecoilRecoverySpeed);
+
+	// Interpolate weapon position between hipfire and ADS, plus recoil
+	FVector TargetOffset = (bIsADS ? ADSOffset : HipfireOffset) + CurrentRecoilOffset;
 	FVector CurrentOffset = GetRootComponent()->GetRelativeLocation();
 
-	if (!CurrentOffset.Equals(TargetOffset, 0.1f))
-	{
-		FVector NewOffset = FMath::VInterpTo(CurrentOffset, TargetOffset, DeltaTime, ADSInterpSpeed);
-		SetActorRelativeLocation(NewOffset);
-	}
+	FVector NewOffset = FMath::VInterpTo(CurrentOffset, TargetOffset, DeltaTime, ADSInterpSpeed);
+	SetActorRelativeLocation(NewOffset);
+
+	// Apply recoil rotation to mesh (additive to base rotation)
+	FRotator BaseRotation = FRotator(0.f, -90.f, 0.f);
+	FRotator CurrentMeshRot = WeaponMesh->GetRelativeRotation();
+	FRotator TargetMeshRot = BaseRotation + CurrentRecoilRotation;
+	WeaponMesh->SetRelativeRotation(FMath::RInterpTo(CurrentMeshRot, TargetMeshRot, DeltaTime, RecoilRecoverySpeed));
+}
+
+void AALWeapon::ApplyRecoil()
+{
+	CurrentRecoilOffset += RecoilKick;
+	CurrentRecoilRotation += RecoilRotation;
 }
 
 void AALWeapon::StartFire()
@@ -203,6 +223,9 @@ void AALWeapon::Fire()
 	{
 		Projectile->FireInDirection(ShootDirection);
 	}
+
+	// Apply visual recoil
+	ApplyRecoil();
 
 	// Reset shot timer
 	TimeSinceLastShot = 0.f;
