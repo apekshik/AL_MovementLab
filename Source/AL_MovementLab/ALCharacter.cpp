@@ -2,6 +2,7 @@
 
 #include "ALCharacter.h"
 #include "ALCharacterMovementComponent.h"
+#include "ALWeapon.h"
 
 #include "GameFramework/Controller.h"
 #include "GameFramework/PlayerController.h"
@@ -47,6 +48,9 @@ void AALCharacter::BeginPlay()
 		CamLoc.Z = StandingCameraHeight;
 		FirstPersonCamera->SetRelativeLocation(CamLoc);
 	}
+
+	// Spawn weapon
+	SpawnWeapon();
 }
 
 void AALCharacter::Tick(float DeltaTime)
@@ -96,6 +100,12 @@ void AALCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompone
 
 	PlayerInputComponent->BindAction("Crouch", IE_Pressed, this, &AALCharacter::StartCrouch);
 	PlayerInputComponent->BindAction("Crouch", IE_Released, this, &AALCharacter::StopCrouch);
+
+	PlayerInputComponent->BindAction("Fire", IE_Pressed, this, &AALCharacter::StartFire);
+	PlayerInputComponent->BindAction("Fire", IE_Released, this, &AALCharacter::StopFire);
+
+	PlayerInputComponent->BindAction("ADS", IE_Pressed, this, &AALCharacter::StartADS);
+	PlayerInputComponent->BindAction("ADS", IE_Released, this, &AALCharacter::StopADS);
 }
 
 // ---- Movement ----
@@ -259,5 +269,63 @@ void AALCharacter::UpdateCameraTilt(float DeltaTime)
 			ControlRot.Roll = CurrentCameraRoll;
 			PC->SetControlRotation(ControlRot);
 		}
+	}
+}
+
+// ---- Weapon ----
+
+void AALCharacter::StartFire()
+{
+	if (CurrentWeapon)
+	{
+		CurrentWeapon->StartFire();
+	}
+}
+
+void AALCharacter::StopFire()
+{
+	if (CurrentWeapon)
+	{
+		CurrentWeapon->StopFire();
+	}
+}
+
+void AALCharacter::StartADS()
+{
+	if (CurrentWeapon)
+	{
+		CurrentWeapon->StartADS();
+	}
+}
+
+void AALCharacter::StopADS()
+{
+	if (CurrentWeapon)
+	{
+		CurrentWeapon->StopADS();
+	}
+}
+
+void AALCharacter::SpawnWeapon()
+{
+	if (!WeaponClass)
+	{
+		return;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.Instigator = this;
+
+	CurrentWeapon = GetWorld()->SpawnActor<AALWeapon>(WeaponClass, SpawnParams);
+	if (CurrentWeapon)
+	{
+		// Attach weapon to camera so it follows view
+		CurrentWeapon->AttachToComponent(
+			FirstPersonCamera,
+			FAttachmentTransformRules::SnapToTargetNotIncludingScale
+		);
+		// Position is managed by weapon's Tick based on ADS state
+		CurrentWeapon->SetActorRelativeRotation(FRotator(0.f, -90.f, 0.f));
 	}
 }

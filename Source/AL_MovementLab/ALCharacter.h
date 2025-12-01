@@ -8,6 +8,7 @@
 
 class UCameraComponent;
 class UALCharacterMovementComponent;
+class AALWeapon;
 
 UCLASS()
 class AL_MOVEMENTLAB_API AALCharacter : public ACharacter
@@ -64,4 +65,18 @@ protected:
 	void OnJumpReleased();
 
 	void UpdateCameraTilt(float DeltaTime);
+
+	// ---- Weapon ----
+	void StartFire();
+	void StopFire();
+	void StartADS();
+	void StopADS();
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
+	TSubclassOf<AALWeapon> WeaponClass;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Weapon")
+	TObjectPtr<AALWeapon> CurrentWeapon;
+
+	void SpawnWeapon();
 };
