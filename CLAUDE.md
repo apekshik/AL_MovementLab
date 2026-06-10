@@ -112,9 +112,11 @@ Air slide impulse is deferred until `ProcessLanded()` fires.
 - Momentum decays faster during crouch walk, slower while airborne
 - Ground slide: 50% impulse, 15 momentum cost; Air slide: 120% impulse, 30 momentum cost
 - Weapon attached to camera, position managed by weapon's Tick
-- Hipfire spawns projectiles from barrel, aims toward crosshair (line trace)
-- ADS spawns projectiles from camera center
-- Visual recoil is additive and recovers smoothly
+- All shots spawn from the `Muzzle` socket and aim toward the crosshair (line trace); spread applies only in hipfire
+- Recoil/sway rotations are authored in camera space and pre-multiplied onto the base rotation (the mesh is yawed -90, so adding rotator components would act around the wrong axes)
+- Base position/rotation interpolate between states; recoil and sway are added un-smoothed so kicks stay snappy
+- ADS FOV zoom handled by the character (`DefaultFOV`/`ADSFOV` on AALCharacter)
+- Projectile visual mesh is auto-stretched into a tracer streak at BeginPlay based on the mesh's real bounds (`TracerLength` x `TracerThickness`)
 
 ## Input Bindings (Legacy System)
 
@@ -140,9 +142,14 @@ Set `bDrawMomentumDebug = true` on movement component to show on-screen debug in
 - Set `WeaponClass` to `BP_ALWeapon`
 
 **BP_ALWeapon:**
-- Set `WeaponMesh` skeletal mesh (e.g., SK_Rifle)
+- Set `WeaponMesh` skeletal mesh (e.g., SKM_Rifle)
 - Set `ProjectileClass` to `BP_ALProjectile`
-- Adjust position/recoil parameters as needed
+- Optionally set `FireSound`
+- Adjust position/recoil/sway parameters as needed
+
+**Weapon mesh sockets** (added in the Skeletal Mesh editor, stored on the skeleton):
+- `Muzzle` — barrel tip; projectile spawn point (SKM_Rifle ships with one)
+- `Sight` — on the sight line above the receiver, X axis pointing forward; enables ADS auto-centering
 
 **BP_ALProjectile:**
 - Add a visible static mesh to `MeshComponent` (e.g., small sphere)

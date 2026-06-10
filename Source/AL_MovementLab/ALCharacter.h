@@ -43,6 +43,15 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|WallRun")
 	float WallRunCameraTiltInterpSpeed = 10.f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|ADS")
+	float DefaultFOV = 90.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|ADS")
+	float ADSFOV = 72.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|ADS")
+	float ADSFOVInterpSpeed = 12.f;
+
 	float TargetCameraHeight;
 	float TargetCameraRoll;
 	float CurrentCameraRoll;

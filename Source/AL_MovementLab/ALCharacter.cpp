@@ -47,6 +47,7 @@ void AALCharacter::BeginPlay()
 		FVector CamLoc = FirstPersonCamera->GetRelativeLocation();
 		CamLoc.Z = StandingCameraHeight;
 		FirstPersonCamera->SetRelativeLocation(CamLoc);
+		FirstPersonCamera->SetFieldOfView(DefaultFOV);
 	}
 
 	// Spawn weapon
@@ -75,6 +76,17 @@ void AALCharacter::Tick(float DeltaTime)
 		{
 			CamLoc.Z = FMath::FInterpTo(CamLoc.Z, TargetCameraHeight, DeltaTime, CrouchCameraInterpSpeed);
 			FirstPersonCamera->SetRelativeLocation(CamLoc);
+		}
+	}
+
+	// ADS FOV zoom
+	if (FirstPersonCamera)
+	{
+		const float TargetFOV = (CurrentWeapon && CurrentWeapon->IsADS()) ? ADSFOV : DefaultFOV;
+		if (!FMath::IsNearlyEqual(FirstPersonCamera->FieldOfView, TargetFOV, 0.01f))
+		{
+			FirstPersonCamera->SetFieldOfView(
+				FMath::FInterpTo(FirstPersonCamera->FieldOfView, TargetFOV, DeltaTime, ADSFOVInterpSpeed));
 		}
 	}
 

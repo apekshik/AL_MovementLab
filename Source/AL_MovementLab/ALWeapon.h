@@ -7,6 +7,7 @@
 #include "ALWeapon.generated.h"
 
 class USkeletalMeshComponent;
+class USoundBase;
 class AALProjectile;
 
 UCLASS()
@@ -47,9 +48,17 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
 	TSubclassOf<AALProjectile> ProjectileClass;
 
-	/** Muzzle socket name on the weapon mesh */
+	/** Muzzle socket on the weapon mesh; projectiles spawn from here */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
 	FName MuzzleSocketName;
+
+	/** Sight socket on the weapon mesh; auto-aligned to screen center during ADS if it exists */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
+	FName SightSocketName;
+
+	/** Optional sound played per shot */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
+	TObjectPtr<USoundBase> FireSound;
 
 	/** Fire rate in rounds per minute */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
@@ -63,13 +72,35 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon")
 	float AimTraceDistance;
 
-	/** Weapon position when hipfiring (relative to camera) */
+	/** Spawn a muzzle flash puff per shot */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|MuzzleFlash")
+	bool bMuzzleFlash;
+
+	/** Overall muzzle flash size multiplier */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|MuzzleFlash")
+	float MuzzleFlashScale;
+
+	// ---- Position ----
+
+	/** Weapon position when hipfiring (relative to camera: X forward, Y right, Z up) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Position")
 	FVector HipfireOffset;
 
-	/** Weapon position when ADS (relative to camera) */
+	/** Weapon rotation when hipfiring. Yaw -90 points the barrel forward; a couple extra degrees of yaw cants the muzzle toward screen center */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Position")
+	FRotator HipfireRotation;
+
+	/** Weapon rotation when ADS (must point the barrel straight forward) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Position")
+	FRotator ADSRotation;
+
+	/** Fallback ADS position, used only when the mesh has no sight socket */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Position")
 	FVector ADSOffset;
+
+	/** How far in front of the camera the sight socket sits during ADS */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Position")
+	float ADSSightDistance;
 
 	/** How fast weapon moves between hipfire and ADS positions */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Position")
@@ -92,17 +123,57 @@ protected:
 
 	// ---- Recoil ----
 
-	/** Positional kick when firing (backward, up) */
+	/** Positional kick per shot in camera space (X back, Y right, Z up) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil")
 	FVector RecoilKick;
 
-	/** Rotational kick when firing (pitch up) */
+	/** Rotational kick per shot in camera space (positive pitch = muzzle up) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil")
 	FRotator RecoilRotation;
+
+	/** Random yaw added per shot, +/- this many degrees */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil")
+	float RecoilYawRandom;
+
+	/** Random variation of kick strength per shot, 0..1 */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil")
+	float RecoilRandomness;
+
+	/** Recoil multiplier while ADS */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil")
+	float ADSRecoilScale;
 
 	/** How fast recoil recovers */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil")
 	float RecoilRecoverySpeed;
+
+	/** Camera pitch climb per shot, in degrees (player must pull down to compensate) */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil")
+	float ViewKickPitch;
+
+	/** Random camera yaw per shot, +/- this many degrees */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Recoil")
+	float ViewKickYaw;
+
+	// ---- Sway ----
+
+	/** Degrees of weapon lag per (degree/sec) of look speed */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Sway")
+	float SwayScale;
+
+	/** Max sway angle in degrees */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Sway")
+	float SwayMaxAngle;
+
+	/** How fast sway catches up to the camera */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Sway")
+	float SwayInterpSpeed;
+
+	/** Sway multiplier while ADS */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Weapon|Sway")
+	float SwayADSScale;
+
+	// ---- Runtime state ----
 
 	/** Current recoil offset being applied */
 	FVector CurrentRecoilOffset;
@@ -110,8 +181,29 @@ protected:
 	/** Current recoil rotation being applied */
 	FRotator CurrentRecoilRotation;
 
+	/** Current sway rotation being applied */
+	FRotator CurrentSwayRotation;
+
+	/** Owner's control rotation last frame, for sway rate */
+	FRotator LastOwnerControlRotation;
+	bool bSwayInitialized;
+
+	/** Interpolated base transform (recoil/sway are added on top) */
+	FVector BaseOffset;
+	FRotator BaseRotation;
+
+	/** ADS offset computed from the sight socket at BeginPlay */
+	FVector ComputedADSOffset;
+	bool bHasSightSocket;
+
 	/** Apply recoil kick */
 	void ApplyRecoil();
+
+	/** Update look-lag sway */
+	void UpdateSway(float DeltaTime);
+
+	/** World-space muzzle location (socket if present, else in front of the weapon) */
+	FVector GetMuzzleLocation() const;
 
 	/** Time between shots */
 	float TimeBetweenShots;
