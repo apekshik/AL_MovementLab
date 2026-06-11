@@ -132,6 +132,16 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
 	bool bDriveViewmodelMovementState = true;
 
+	// Also write the pack's DesiredSpeed (their gait normalizes speed against
+	// it; their inputs used to set it, so ours must).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
+	bool bFeedViewmodelDesiredSpeed = true;
+
+	// Bypass their gait math entirely: write Gait (0=idle..1=walk..2=sprint..
+	// 3=tac-sprint) straight onto the pawn and ViewmodelController.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
+	bool bFeedViewmodelGaitDirect = false;
+
 	// Min ground speed before the arms play the sprint cycle.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
 	float SprintAnimSpeedThreshold = 600.f;

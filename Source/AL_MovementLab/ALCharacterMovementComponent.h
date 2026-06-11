@@ -32,6 +32,9 @@ public:
 	void SetIsSprinting(bool bNewSprinting);
 	bool IsSprinting() const { return bIsSprinting; }
 	float GetMomentum() const { return Momentum; }
+	float GetWalkSpeed() const { return WalkSpeed; }
+	float GetSprintSpeed() const { return SprintSpeed; }
+	float GetCrouchWalkSpeed() const { return CrouchWalkSpeed; }
 	void StartCrouch();
 	void StopCrouch();
 	bool IsSliding() const { return bIsSliding; }

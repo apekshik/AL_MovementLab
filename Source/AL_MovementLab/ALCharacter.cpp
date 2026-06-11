@@ -432,6 +432,22 @@ static UEnum* ResolveEnumProperty(const FProperty* Prop, const void* Container, 
 	return nullptr;
 }
 
+// BP floats are doubles in UE5; handle both widths.
+static void SetFloatPropByName(UObject* Obj, const TCHAR* PropName, double Value)
+{
+	if (!Obj)
+	{
+		return;
+	}
+	if (FNumericProperty* Prop = CastField<FNumericProperty>(Obj->GetClass()->FindPropertyByName(PropName)))
+	{
+		if (Prop->IsFloatingPoint())
+		{
+			Prop->SetFloatingPointPropertyValue(Prop->ContainerPtrToValuePtr<void>(Obj), Value);
+		}
+	}
+}
+
 void AALCharacter::UpdateViewmodelMovementState()
 {
 	if (!bDriveViewmodelMovementState)
@@ -444,6 +460,46 @@ void AALCharacter::UpdateViewmodelMovementState()
 	if (!ALMove || !StateProp)
 	{
 		return;
+	}
+
+	// Their gait math divides speed by DesiredSpeed (their input events used
+	// to maintain it); keep it synced to our current speed cap.
+	if (bFeedViewmodelDesiredSpeed)
+	{
+		SetFloatPropByName(this, TEXT("DesiredSpeed"), ALMove->GetMaxSpeed());
+	}
+
+	if (bFeedViewmodelGaitDirect)
+	{
+		const float Speed = GetVelocity().Size2D();
+		const float WalkCap = ALMove->IsCrouchWalking() ? ALMove->GetCrouchWalkSpeed() : ALMove->GetWalkSpeed();
+		const float SprintCap = FMath::Max(ALMove->GetSprintSpeed(), WalkCap + 1.f);
+		double Gait;
+		if (ALMove->IsSliding())
+		{
+			Gait = 0.0;
+		}
+		else if (Speed <= WalkCap)
+		{
+			Gait = Speed / WalkCap;                              // 0..1 idle->walk
+		}
+		else
+		{
+			// Clamp so slide-boosted speeds don't spill into the tac band
+			Gait = FMath::Min(1.0 + (Speed - WalkCap) / (SprintCap - WalkCap), 2.0); // 1..2 walk->sprint
+		}
+		if ((ALMove->IsSprinting() || ALMove->IsWallRunning()) && ALMove->GetMomentum() >= TacSprintMomentumThreshold)
+		{
+			Gait = 3.0;                                   // tac-sprint band
+		}
+		SetFloatPropByName(this, TEXT("Gait"), Gait);
+		for (UActorComponent* Comp : GetComponents())
+		{
+			if (Comp && Comp->GetClass()->GetName().StartsWith(TEXT("ViewmodelController")))
+			{
+				SetFloatPropByName(Comp, TEXT("Gait"), Gait);
+			}
+		}
 	}
 
 	const float Speed2D = GetVelocity().Size2D();
