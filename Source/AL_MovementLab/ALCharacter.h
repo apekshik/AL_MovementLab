@@ -9,6 +9,7 @@
 class UCameraComponent;
 class UALCharacterMovementComponent;
 class AALWeapon;
+class UInputMappingContext;
 
 UCLASS()
 class AL_MOVEMENTLAB_API AALCharacter : public ACharacter
@@ -31,6 +32,12 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Camera")
 	TObjectPtr<UCameraComponent> FirstPersonCamera;
 
+	// Component whose relative Z gets the crouch/slide eye dip. When unset,
+	// falls back to FirstPersonCamera. For viewmodel pawns set this to the
+	// arms mesh so the socketed camera follows.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Crouch")
+	TObjectPtr<USceneComponent> EyeHeightComponent;
+
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|Crouch")
 	float StandingCameraHeight = 64.f;
 
@@ -52,11 +59,29 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Camera|ADS")
 	float ADSFOVInterpSpeed = 12.f;
 
-	float TargetCameraHeight;
+	// Enhanced Input contexts swapped one tick after BeginPlay. Lets a child
+	// blueprint replace a context its own BeginPlay graph adds (e.g. the FPS
+	// Animation pack's full IMC) with a trimmed project-owned one, without
+	// editing the blueprint graph.
+	UPROPERTY(EditAnywhere, Category = "Input|Viewmodel")
+	TArray<TSoftObjectPtr<UInputMappingContext>> ViewmodelContextsToRemove;
+
+	UPROPERTY(EditAnywhere, Category = "Input|Viewmodel")
+	TArray<TSoftObjectPtr<UInputMappingContext>> ViewmodelContextsToAdd;
+
+	UPROPERTY(EditAnywhere, Category = "Input|Viewmodel")
+	int32 ViewmodelContextPriority = 1;
+
+	float BaseEyeZ;
+	float CurrentEyeOffset;
+	float TargetEyeOffset;
 	float TargetCameraRoll;
 	float CurrentCameraRoll;
 	bool bIsCrouching;
 	bool bWantsToMoveForward;
+
+	USceneComponent* GetEyeComponent() const;
+	void ApplyViewmodelInputContexts();
 
 	// ---- Input Handlers ----
 	void MoveForward(float Value);

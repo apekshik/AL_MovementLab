@@ -7,6 +7,10 @@
 #include "GameFramework/Controller.h"
 #include "GameFramework/PlayerController.h"
 #include "Camera/CameraComponent.h"
+#include "EnhancedInputSubsystems.h"
+#include "InputMappingContext.h"
+#include "Engine/LocalPlayer.h"
+#include "TimerManager.h"
 
 AALCharacter::AALCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(
@@ -30,7 +34,9 @@ AALCharacter::AALCharacter(const FObjectInitializer& ObjectInitializer)
 	FirstPersonCamera->SetRelativeLocation(FVector(0.f, 0.f, StandingCameraHeight));
 	FirstPersonCamera->bUsePawnControlRotation = true;
 
-	TargetCameraHeight = StandingCameraHeight;
+	BaseEyeZ = StandingCameraHeight;
+	CurrentEyeOffset = 0.f;
+	TargetEyeOffset = 0.f;
 	TargetCameraRoll = 0.f;
 	CurrentCameraRoll = 0.f;
 	bIsCrouching = false;
@@ -41,13 +47,28 @@ void AALCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	TargetCameraHeight = StandingCameraHeight;
+	// Capture the resting eye height; the crouch dip is applied as an offset
+	// from this so it works for any EyeHeightComponent, not just the camera.
+	TargetEyeOffset = 0.f;
+	CurrentEyeOffset = 0.f;
+	if (USceneComponent* Eye = GetEyeComponent())
+	{
+		BaseEyeZ = (Eye == FirstPersonCamera) ? StandingCameraHeight : Eye->GetRelativeLocation().Z;
+		FVector EyeLoc = Eye->GetRelativeLocation();
+		EyeLoc.Z = BaseEyeZ;
+		Eye->SetRelativeLocation(EyeLoc);
+	}
+
 	if (FirstPersonCamera)
 	{
-		FVector CamLoc = FirstPersonCamera->GetRelativeLocation();
-		CamLoc.Z = StandingCameraHeight;
-		FirstPersonCamera->SetRelativeLocation(CamLoc);
 		FirstPersonCamera->SetFieldOfView(DefaultFOV);
+	}
+
+	if (ViewmodelContextsToRemove.Num() > 0 || ViewmodelContextsToAdd.Num() > 0)
+	{
+		// Deferred a tick: the blueprint BeginPlay graph (which adds the
+		// context we may want gone) runs after this C++ body.
+		GetWorldTimerManager().SetTimerForNextTick(this, &AALCharacter::ApplyViewmodelInputContexts);
 	}
 
 	// Spawn weapon
@@ -67,15 +88,15 @@ void AALCharacter::Tick(float DeltaTime)
 		}
 	}
 
-	// Camera height interpolation
-	if (FirstPersonCamera)
+	// Eye height (crouch/slide dip) interpolation
+	if (USceneComponent* Eye = GetEyeComponent())
 	{
-		FVector CamLoc = FirstPersonCamera->GetRelativeLocation();
-
-		if (!FMath::IsNearlyEqual(CamLoc.Z, TargetCameraHeight, 0.1f))
+		if (!FMath::IsNearlyEqual(CurrentEyeOffset, TargetEyeOffset, 0.1f))
 		{
-			CamLoc.Z = FMath::FInterpTo(CamLoc.Z, TargetCameraHeight, DeltaTime, CrouchCameraInterpSpeed);
-			FirstPersonCamera->SetRelativeLocation(CamLoc);
+			CurrentEyeOffset = FMath::FInterpTo(CurrentEyeOffset, TargetEyeOffset, DeltaTime, CrouchCameraInterpSpeed);
+			FVector EyeLoc = Eye->GetRelativeLocation();
+			EyeLoc.Z = BaseEyeZ + CurrentEyeOffset;
+			Eye->SetRelativeLocation(EyeLoc);
 		}
 	}
 
@@ -192,7 +213,7 @@ void AALCharacter::StartCrouch()
 	}
 
 	bIsCrouching = true;
-	TargetCameraHeight = CrouchingCameraHeight;
+	TargetEyeOffset = CrouchingCameraHeight - StandingCameraHeight;
 
 	if (UALCharacterMovementComponent* ALMove = GetALMovementComponent())
 	{
@@ -208,7 +229,7 @@ void AALCharacter::StopCrouch()
 	}
 
 	bIsCrouching = false;
-	TargetCameraHeight = StandingCameraHeight;
+	TargetEyeOffset = 0.f;
 
 	if (UALCharacterMovementComponent* ALMove = GetALMovementComponent())
 	{
@@ -219,6 +240,50 @@ void AALCharacter::StopCrouch()
 UALCharacterMovementComponent* AALCharacter::GetALMovementComponent() const
 {
 	return Cast<UALCharacterMovementComponent>(GetCharacterMovement());
+}
+
+USceneComponent* AALCharacter::GetEyeComponent() const
+{
+	return EyeHeightComponent ? EyeHeightComponent.Get() : Cast<USceneComponent>(FirstPersonCamera);
+}
+
+// ---- Viewmodel Input ----
+
+void AALCharacter::ApplyViewmodelInputContexts()
+{
+	APlayerController* PC = Cast<APlayerController>(Controller);
+	if (!PC)
+	{
+		return;
+	}
+
+	ULocalPlayer* LocalPlayer = PC->GetLocalPlayer();
+	if (!LocalPlayer)
+	{
+		return;
+	}
+
+	UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(LocalPlayer);
+	if (!Subsystem)
+	{
+		return;
+	}
+
+	for (const TSoftObjectPtr<UInputMappingContext>& Context : ViewmodelContextsToRemove)
+	{
+		if (UInputMappingContext* Resolved = Context.LoadSynchronous())
+		{
+			Subsystem->RemoveMappingContext(Resolved);
+		}
+	}
+
+	for (const TSoftObjectPtr<UInputMappingContext>& Context : ViewmodelContextsToAdd)
+	{
+		if (UInputMappingContext* Resolved = Context.LoadSynchronous())
+		{
+			Subsystem->AddMappingContext(Resolved, ViewmodelContextPriority);
+		}
+	}
 }
 
 // ---- Jump / Wall Jump ----
