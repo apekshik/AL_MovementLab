@@ -9,7 +9,11 @@
 class UCameraComponent;
 class UALCharacterMovementComponent;
 class AALWeapon;
+class AALProjectile;
 class UInputMappingContext;
+class UAnimInstance;
+class UAnimMontage;
+class USkeletalMeshComponent;
 
 UCLASS()
 class AL_MOVEMENTLAB_API AALCharacter : public ACharacter
@@ -82,6 +86,12 @@ protected:
 
 	USceneComponent* GetEyeComponent() const;
 	void ApplyViewmodelInputContexts();
+
+	// ---- Look Sensitivity ----
+	// Global look multiplier on top of the raw axis. Tune live in PIE to
+	// match your Apex cm/360 (1.0 = engine default).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input|Look", meta = (ClampMin = "0.01", ClampMax = "10.0"))
+	float MouseSensitivity = 1.f;
 
 	// ---- Input Handlers ----
 	void MoveForward(float Value);
@@ -180,4 +190,23 @@ protected:
 
 	AActor* GetActiveViewmodelWeapon() const;
 	void UpdateViewmodelDebug();
+
+	// ---- Viewmodel Ballistics ----
+	// Projectile spawned per shot of the pack's weapons (their fire is
+	// animation-only). Hooked off the arms' Fire montage starting.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel|Ballistics")
+	TSubclassOf<AALProjectile> ViewmodelProjectileClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel|Ballistics")
+	float AimTraceDistance = 50000.f;
+
+	TWeakObjectPtr<UAnimInstance> BoundArmsAnim;
+	TWeakObjectPtr<USkeletalMeshComponent> CachedWeaponMesh;
+	FName CachedMuzzleSocket;
+
+	UFUNCTION()
+	void OnArmsMontageStarted(UAnimMontage* Montage);
+	void EnsureArmsMontageBinding();
+	void FireViewmodelProjectile();
+	USkeletalMeshComponent* FindViewmodelWeaponMesh() const;
 };

@@ -3,6 +3,7 @@
 #include "ALCharacter.h"
 #include "ALCharacterMovementComponent.h"
 #include "ALWeapon.h"
+#include "ALProjectile.h"
 
 #include "GameFramework/Controller.h"
 #include "GameFramework/PlayerController.h"
@@ -122,6 +123,10 @@ void AALCharacter::Tick(float DeltaTime)
 	// Viewmodel state feed, fire-mode enforcement, on-screen readout
 	UpdateViewmodelMovementState();
 	UpdateViewmodelDebug();
+
+	// Keep the per-shot montage hook bound (the arms' AnimInstance changes
+	// when the pack swaps viewmodel meshes)
+	EnsureArmsMontageBinding();
 }
 
 void AALCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -186,12 +191,12 @@ void AALCharacter::MoveRight(float Value)
 
 void AALCharacter::Turn(float Value)
 {
-	AddControllerYawInput(Value);
+	AddControllerYawInput(Value * MouseSensitivity);
 }
 
 void AALCharacter::LookUp(float Value)
 {
-	AddControllerPitchInput(Value);
+	AddControllerPitchInput(Value * MouseSensitivity);
 }
 
 // ---- Sprint ----
@@ -662,6 +667,132 @@ void AALCharacter::UpdateViewmodelDebug()
 		FString::Printf(TEXT("Montage: %s"), Montage ? *Montage->GetName() : TEXT("none")));
 	GEngine->AddOnScreenDebugMessage(Key + 12, 0.f, FColor::Cyan,
 		FString::Printf(TEXT("Anim State: %s  |  Speed: %.0f"), *MoveState, GetVelocity().Size2D()));
+}
+
+// ---- Viewmodel Ballistics ----
+
+void AALCharacter::EnsureArmsMontageBinding()
+{
+	if (!ViewmodelProjectileClass)
+	{
+		return;
+	}
+
+	UAnimInstance* Anim = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
+	if (!Anim || Anim == BoundArmsAnim.Get())
+	{
+		return;
+	}
+
+	Anim->OnMontageStarted.AddUniqueDynamic(this, &AALCharacter::OnArmsMontageStarted);
+	BoundArmsAnim = Anim;
+}
+
+void AALCharacter::OnArmsMontageStarted(UAnimMontage* Montage)
+{
+	if (!Montage)
+	{
+		return;
+	}
+
+	// Pack fire montages restart per shot. Skip dry fire and the
+	// fire-out/tail montages.
+	const FString Name = Montage->GetName();
+	if (Name.Contains(TEXT("Fire")) && !Name.Contains(TEXT("Dry")) && !Name.Contains(TEXT("Out")))
+	{
+		FireViewmodelProjectile();
+	}
+}
+
+USkeletalMeshComponent* AALCharacter::FindViewmodelWeaponMesh() const
+{
+	for (UActorComponent* Comp : GetComponents())
+	{
+		if (USkeletalMeshComponent* SkelComp = Cast<USkeletalMeshComponent>(Comp))
+		{
+			if (SkelComp != GetMesh() && SkelComp->GetName().Contains(TEXT("WeaponMesh")))
+			{
+				return SkelComp;
+			}
+		}
+	}
+	return nullptr;
+}
+
+void AALCharacter::FireViewmodelProjectile()
+{
+	if (!ViewmodelProjectileClass || !GetWorld())
+	{
+		return;
+	}
+
+	APlayerController* PC = Cast<APlayerController>(Controller);
+
+	FVector CamLoc = GetActorLocation();
+	FRotator CamRot = GetActorRotation();
+	if (PC)
+	{
+		PC->GetPlayerViewPoint(CamLoc, CamRot);
+	}
+	const FVector CameraForward = CamRot.Vector();
+
+	// Muzzle: socket on the pack's weapon mesh (cached per mesh); fall back
+	// to just in front of the camera.
+	FVector SpawnLocation = CamLoc + CameraForward * 30.f;
+	USkeletalMeshComponent* WeaponMesh = FindViewmodelWeaponMesh();
+	if (WeaponMesh)
+	{
+		if (WeaponMesh != CachedWeaponMesh.Get() || CachedMuzzleSocket.IsNone())
+		{
+			CachedWeaponMesh = WeaponMesh;
+			CachedMuzzleSocket = NAME_None;
+			for (const FName& Socket : WeaponMesh->GetAllSocketNames())
+			{
+				if (Socket.ToString().Contains(TEXT("Muzzle")))
+				{
+					CachedMuzzleSocket = Socket;
+					break;
+				}
+			}
+		}
+		if (!CachedMuzzleSocket.IsNone())
+		{
+			SpawnLocation = WeaponMesh->GetSocketLocation(CachedMuzzleSocket);
+		}
+	}
+
+	// Aim at whatever the crosshair is on (same convergence as the old
+	// AALWeapon: bullets visibly leave the barrel, land at the crosshair)
+	FVector AimPoint = CamLoc + CameraForward * AimTraceDistance;
+	FHitResult Hit;
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(this);
+	if (AActor* ActiveWeapon = GetActiveViewmodelWeapon())
+	{
+		QueryParams.AddIgnoredActor(ActiveWeapon);
+	}
+	if (GetWorld()->LineTraceSingleByChannel(Hit, CamLoc, AimPoint, ECC_Visibility, QueryParams))
+	{
+		AimPoint = Hit.ImpactPoint;
+	}
+
+	FVector ShootDirection = (AimPoint - SpawnLocation).GetSafeNormal();
+	if (FVector::DotProduct(ShootDirection, CameraForward) <= 0.f)
+	{
+		ShootDirection = CameraForward;
+	}
+
+	FActorSpawnParameters SpawnParams;
+	SpawnParams.Owner = this;
+	SpawnParams.Instigator = this;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	AALProjectile* Projectile = GetWorld()->SpawnActor<AALProjectile>(
+		ViewmodelProjectileClass, SpawnLocation, ShootDirection.Rotation(), SpawnParams);
+	if (Projectile)
+	{
+		Projectile->FireInDirection(ShootDirection);
+	}
 }
 
 void AALCharacter::SpawnWeapon()
