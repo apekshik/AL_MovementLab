@@ -127,6 +127,21 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
 	bool bForceAutoFireMode = true;
 
+	// Drive the pack's MovementState (E_MovementState) from our movement
+	// component each tick, since its own sprint inputs are unmapped.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
+	bool bDriveViewmodelMovementState = true;
+
+	// Min ground speed before the arms play the sprint cycle.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
+	float SprintAnimSpeedThreshold = 600.f;
+
+	// Momentum at which sprint arms upgrade to the tac-sprint pump.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
+	float TacSprintMomentumThreshold = 60.f;
+
+	void UpdateViewmodelMovementState();
+
 	UPROPERTY(Transient)
 	TObjectPtr<AActor> LastFireModeWeapon;
 

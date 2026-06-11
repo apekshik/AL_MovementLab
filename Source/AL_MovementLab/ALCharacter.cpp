@@ -119,7 +119,8 @@ void AALCharacter::Tick(float DeltaTime)
 	// Camera tilt for wall running
 	UpdateCameraTilt(DeltaTime);
 
-	// Viewmodel fire-mode enforcement + on-screen readout
+	// Viewmodel state feed, fire-mode enforcement, on-screen readout
+	UpdateViewmodelMovementState();
 	UpdateViewmodelDebug();
 }
 
@@ -429,6 +430,69 @@ static UEnum* ResolveEnumProperty(const FProperty* Prop, const void* Container, 
 		return ByteProp->Enum;
 	}
 	return nullptr;
+}
+
+void AALCharacter::UpdateViewmodelMovementState()
+{
+	if (!bDriveViewmodelMovementState)
+	{
+		return;
+	}
+
+	UALCharacterMovementComponent* ALMove = GetALMovementComponent();
+	FProperty* StateProp = GetClass()->FindPropertyByName(TEXT("MovementState"));
+	if (!ALMove || !StateProp)
+	{
+		return;
+	}
+
+	const float Speed2D = GetVelocity().Size2D();
+
+	// Map our state machine onto the pack's E_MovementState. Slides hold the
+	// weapon steady (Idle); tac-sprint is the visual reward for momentum.
+	const TCHAR* Desired = TEXT("Idle");
+	if (ALMove->IsSliding())
+	{
+		Desired = TEXT("Idle");
+	}
+	else if ((ALMove->IsSprinting() || ALMove->IsWallRunning()) && Speed2D >= SprintAnimSpeedThreshold)
+	{
+		Desired = (ALMove->GetMomentum() >= TacSprintMomentumThreshold) ? TEXT("TacSprint") : TEXT("Sprint");
+	}
+	else if (Speed2D > 25.f)
+	{
+		Desired = TEXT("Walk");
+	}
+
+	int64 CurrentValue = 0;
+	UEnum* Enum = ResolveEnumProperty(StateProp, this, CurrentValue);
+	if (!Enum)
+	{
+		return;
+	}
+
+	for (int32 i = 0; i < Enum->NumEnums() - 1; ++i)
+	{
+		if (Enum->GetDisplayNameTextByIndex(i).ToString().Replace(TEXT(" "), TEXT("")) != Desired)
+		{
+			continue;
+		}
+		const int64 NewValue = Enum->GetValueByIndex(i);
+		if (NewValue == CurrentValue)
+		{
+			return;
+		}
+		void* ValuePtr = StateProp->ContainerPtrToValuePtr<void>(this);
+		if (const FEnumProperty* EnumProp = CastField<FEnumProperty>(StateProp))
+		{
+			EnumProp->GetUnderlyingProperty()->SetIntPropertyValue(ValuePtr, NewValue);
+		}
+		else
+		{
+			*static_cast<uint8*>(ValuePtr) = static_cast<uint8>(NewValue);
+		}
+		return;
+	}
 }
 
 AActor* AALCharacter::GetActiveViewmodelWeapon() const
