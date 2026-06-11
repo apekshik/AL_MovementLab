@@ -24,7 +24,13 @@ public:
 
 	virtual void ProcessLanded(const FHitResult& Hit, float remainingTime, int32 Iterations) override;
 
+	// Speed authority lives in this component's state, not in MaxWalkSpeed:
+	// the FPS Animation pack's blueprint rewrites MaxWalkSpeed from its own
+	// movement state every tick, and that must never affect gameplay speed.
+	virtual float GetMaxSpeed() const override;
+
 	void SetIsSprinting(bool bNewSprinting);
+	bool IsSprinting() const { return bIsSprinting; }
 	void StartCrouch();
 	void StopCrouch();
 	bool IsSliding() const { return bIsSliding; }

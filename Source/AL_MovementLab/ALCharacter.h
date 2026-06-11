@@ -115,4 +115,21 @@ protected:
 	TObjectPtr<AALWeapon> CurrentWeapon;
 
 	void SpawnWeapon();
+
+	// ---- Viewmodel (FPS Animation pack) ----
+
+	// On-screen readout: active gun, fire mode, montage, movement state.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel|Debug")
+	bool bShowViewmodelDebug = true;
+
+	// Flip each newly equipped pack weapon to full auto (pack default is
+	// per-weapon; we want auto as the baseline).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
+	bool bForceAutoFireMode = true;
+
+	UPROPERTY(Transient)
+	TObjectPtr<AActor> LastFireModeWeapon;
+
+	AActor* GetActiveViewmodelWeapon() const;
+	void UpdateViewmodelDebug();
 };

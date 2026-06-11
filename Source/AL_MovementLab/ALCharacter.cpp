@@ -9,8 +9,13 @@
 #include "Camera/CameraComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "InputMappingContext.h"
+#include "Engine/Engine.h"
 #include "Engine/LocalPlayer.h"
 #include "TimerManager.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Animation/AnimInstance.h"
+#include "Animation/AnimMontage.h"
+#include "UObject/UnrealType.h"
 
 AALCharacter::AALCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(
@@ -113,6 +118,9 @@ void AALCharacter::Tick(float DeltaTime)
 
 	// Camera tilt for wall running
 	UpdateCameraTilt(DeltaTime);
+
+	// Viewmodel fire-mode enforcement + on-screen readout
+	UpdateViewmodelDebug();
 }
 
 void AALCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -400,6 +408,134 @@ void AALCharacter::StowWeapon()
 	{
 		CurrentWeapon->Stow();
 	}
+}
+
+// ---- Viewmodel (FPS Animation pack) ----
+// The pack's WeaponManager component and weapon actors are blueprint classes,
+// so their properties are reached via reflection by name (names confirmed
+// against the pack's asset name tables: ActiveWeapon, ActiveSettings, FireMode).
+
+static UEnum* ResolveEnumProperty(const FProperty* Prop, const void* Container, int64& OutValue)
+{
+	const void* ValuePtr = Prop->ContainerPtrToValuePtr<void>(Container);
+	if (const FEnumProperty* EnumProp = CastField<FEnumProperty>(Prop))
+	{
+		OutValue = EnumProp->GetUnderlyingProperty()->GetSignedIntPropertyValue(ValuePtr);
+		return EnumProp->GetEnum();
+	}
+	if (const FByteProperty* ByteProp = CastField<FByteProperty>(Prop))
+	{
+		OutValue = *static_cast<const uint8*>(ValuePtr);
+		return ByteProp->Enum;
+	}
+	return nullptr;
+}
+
+AActor* AALCharacter::GetActiveViewmodelWeapon() const
+{
+	for (UActorComponent* Comp : GetComponents())
+	{
+		if (!Comp || !Comp->GetClass()->GetName().StartsWith(TEXT("WeaponManager")))
+		{
+			continue;
+		}
+		if (const FObjectProperty* Prop = FindFProperty<FObjectProperty>(Comp->GetClass(), TEXT("ActiveWeapon")))
+		{
+			return Cast<AActor>(Prop->GetObjectPropertyValue_InContainer(Comp));
+		}
+	}
+	return nullptr;
+}
+
+void AALCharacter::UpdateViewmodelDebug()
+{
+	AActor* Weapon = GetActiveViewmodelWeapon();
+
+	// One-shot flip to full auto whenever the equipped weapon changes
+	if (Weapon && bForceAutoFireMode && Weapon != LastFireModeWeapon)
+	{
+		if (FProperty* ModeProp = Weapon->GetClass()->FindPropertyByName(TEXT("FireMode")))
+		{
+			int64 CurrentValue = 0;
+			if (UEnum* Enum = ResolveEnumProperty(ModeProp, Weapon, CurrentValue))
+			{
+				for (int32 i = 0; i < Enum->NumEnums() - 1; ++i)
+				{
+					if (!Enum->GetDisplayNameTextByIndex(i).ToString().Contains(TEXT("Auto")))
+					{
+						continue;
+					}
+					const int64 AutoValue = Enum->GetValueByIndex(i);
+					void* ValuePtr = ModeProp->ContainerPtrToValuePtr<void>(Weapon);
+					if (const FEnumProperty* EnumProp = CastField<FEnumProperty>(ModeProp))
+					{
+						EnumProp->GetUnderlyingProperty()->SetIntPropertyValue(ValuePtr, AutoValue);
+					}
+					else
+					{
+						*static_cast<uint8*>(ValuePtr) = static_cast<uint8>(AutoValue);
+					}
+					break;
+				}
+			}
+		}
+		LastFireModeWeapon = Weapon;
+	}
+
+	if (!bShowViewmodelDebug || !GEngine || !IsLocallyControlled())
+	{
+		return;
+	}
+
+	FString WeaponName = TEXT("none");
+	FString ModeName = TEXT("-");
+	if (Weapon)
+	{
+		WeaponName = Weapon->GetClass()->GetName();
+		if (const FObjectProperty* SettingsProp = FindFProperty<FObjectProperty>(Weapon->GetClass(), TEXT("ActiveSettings")))
+		{
+			if (UObject* Settings = SettingsProp->GetObjectPropertyValue_InContainer(Weapon))
+			{
+				WeaponName = Settings->GetName();
+				WeaponName.RemoveFromStart(TEXT("DA_"));
+			}
+		}
+		if (const FProperty* ModeProp = Weapon->GetClass()->FindPropertyByName(TEXT("FireMode")))
+		{
+			int64 ModeValue = 0;
+			if (const UEnum* Enum = ResolveEnumProperty(ModeProp, Weapon, ModeValue))
+			{
+				ModeName = Enum->GetDisplayNameTextByValue(ModeValue).ToString();
+			}
+		}
+	}
+
+	const UAnimMontage* Montage = nullptr;
+	if (const USkeletalMeshComponent* Arms = GetMesh())
+	{
+		if (UAnimInstance* Anim = Arms->GetAnimInstance())
+		{
+			Montage = Anim->GetCurrentActiveMontage();
+		}
+	}
+
+	FString MoveState = TEXT("WALK");
+	if (UALCharacterMovementComponent* ALMove = GetALMovementComponent())
+	{
+		if (ALMove->IsWallRunning())        { MoveState = TEXT("WALLRUN"); }
+		else if (ALMove->IsSliding())       { MoveState = TEXT("SLIDE"); }
+		else if (ALMove->IsCrouchWalking()) { MoveState = TEXT("CROUCH"); }
+		else if (ALMove->IsFalling())       { MoveState = TEXT("AIR"); }
+		else if (ALMove->IsSprinting())     { MoveState = TEXT("SPRINT"); }
+	}
+
+	const uint64 Key = (uint64)((PTRINT)this);
+	GEngine->AddOnScreenDebugMessage(Key + 10, 0.f, FColor::Orange,
+		FString::Printf(TEXT("Weapon: %s  |  Mode: %s"), *WeaponName, *ModeName));
+	GEngine->AddOnScreenDebugMessage(Key + 11, 0.f, FColor::Yellow,
+		FString::Printf(TEXT("Montage: %s"), Montage ? *Montage->GetName() : TEXT("none")));
+	GEngine->AddOnScreenDebugMessage(Key + 12, 0.f, FColor::Cyan,
+		FString::Printf(TEXT("Anim State: %s  |  Speed: %.0f"), *MoveState, GetVelocity().Size2D()));
 }
 
 void AALCharacter::SpawnWeapon()
