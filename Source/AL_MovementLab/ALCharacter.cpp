@@ -338,8 +338,8 @@ void AALCharacter::UpdateCameraTilt(float DeltaTime)
 	if (ALMove->IsWallRunning())
 	{
 		float TiltAngle = ALMove->GetWallRunCameraTilt();
-		// Tilt toward the wall (right wall = positive roll, left wall = negative roll)
-		TargetCameraRoll = ALMove->IsWallRunningOnRightSide() ? TiltAngle : -TiltAngle;
+		// Lean away from the wall (right wall = negative roll, left wall = positive roll)
+		TargetCameraRoll = ALMove->IsWallRunningOnRightSide() ? -TiltAngle : TiltAngle;
 	}
 	else
 	{
