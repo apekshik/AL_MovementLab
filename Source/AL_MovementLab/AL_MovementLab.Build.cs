@@ -10,7 +10,9 @@ public class AL_MovementLab : ModuleRules
 	
 		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", "PhysicsCore" });
 
-		PrivateDependencyModuleNames.AddRange(new string[] {  });
+		// RecoilAnimation: KINEMATION FPS Animation pack's runtime module -
+		// used to detect per-shot recoil plays for projectile spawning
+		PrivateDependencyModuleNames.AddRange(new string[] { "RecoilAnimation" });
 
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

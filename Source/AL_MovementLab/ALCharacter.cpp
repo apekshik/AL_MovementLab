@@ -17,6 +17,7 @@
 #include "Animation/AnimInstance.h"
 #include "Animation/AnimMontage.h"
 #include "UObject/UnrealType.h"
+#include "RecoilAnimationComponent.h"
 
 AALCharacter::AALCharacter(const FObjectInitializer& ObjectInitializer)
 	: Super(
@@ -124,9 +125,8 @@ void AALCharacter::Tick(float DeltaTime)
 	UpdateViewmodelMovementState();
 	UpdateViewmodelDebug();
 
-	// Keep the per-shot montage hook bound (the arms' AnimInstance changes
-	// when the pack swaps viewmodel meshes)
-	EnsureArmsMontageBinding();
+	// Per-shot detection off the pack's recoil component
+	PollViewmodelShots();
 }
 
 void AALCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
@@ -310,6 +310,7 @@ void AALCharacter::OnJumpPressed()
 		if (ALMove->IsWallRunning())
 		{
 			ALMove->WallJump();
+			CurrentEyeOffset -= JumpEyeDipAmount;
 			return;
 		}
 
@@ -317,10 +318,15 @@ void AALCharacter::OnJumpPressed()
 		if (ALMove->CanDoubleJump())
 		{
 			ALMove->DoubleJump();
+			CurrentEyeOffset -= JumpEyeDipAmount;
 			return;
 		}
 	}
 
+	if (CanJump())
+	{
+		CurrentEyeOffset -= JumpEyeDipAmount;
+	}
 	Jump();
 }
 
@@ -513,23 +519,10 @@ void AALCharacter::UpdateViewmodelMovementState()
 		}
 	}
 
-	const float Speed2D = GetVelocity().Size2D();
-
-	// Map our state machine onto the pack's E_MovementState. Slides and wall
-	// runs hold the weapon steady (Idle); tac-sprint rewards sustained momentum.
-	const TCHAR* Desired = TEXT("Idle");
-	if (ALMove->IsSliding() || ALMove->IsWallRunning())
-	{
-		Desired = TEXT("Idle");
-	}
-	else if (ALMove->IsSprinting() && Speed2D >= SprintAnimSpeedThreshold)
-	{
-		Desired = (bEnableTacSprintAnim && ALMove->GetMomentum() >= TacSprintMomentumThreshold) ? TEXT("TacSprint") : TEXT("Sprint");
-	}
-	else if (Speed2D > 25.f)
-	{
-		Desired = TEXT("Walk");
-	}
+	// Locomotion visuals are owned by the direct gait drive; the pack only
+	// uses MovementState as a gate (its aim event requires state == Walk).
+	// Pin it to Walk so ADS works in every state - idle, sprint, slide, wallrun.
+	const TCHAR* Desired = TEXT("Walk");
 
 	int64 CurrentValue = 0;
 	UEnum* Enum = ResolveEnumProperty(StateProp, this, CurrentValue);
@@ -671,37 +664,31 @@ void AALCharacter::UpdateViewmodelDebug()
 
 // ---- Viewmodel Ballistics ----
 
-void AALCharacter::EnsureArmsMontageBinding()
+void AALCharacter::PollViewmodelShots()
 {
 	if (!ViewmodelProjectileClass)
 	{
 		return;
 	}
 
-	UAnimInstance* Anim = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr;
-	if (!Anim || Anim == BoundArmsAnim.Get())
+	if (!CachedRecoilComp.IsValid())
 	{
-		return;
+		CachedRecoilComp = FindComponentByClass<URecoilAnimationComponent>();
+		if (!CachedRecoilComp.IsValid())
+		{
+			return;
+		}
 	}
 
-	Anim->OnMontageStarted.AddUniqueDynamic(this, &AALCharacter::OnArmsMontageStarted);
-	BoundArmsAnim = Anim;
-}
-
-void AALCharacter::OnArmsMontageStarted(UAnimMontage* Montage)
-{
-	if (!Montage)
-	{
-		return;
-	}
-
-	// Pack fire montages restart per shot. Skip dry fire and the
-	// fire-out/tail montages.
-	const FString Name = Montage->GetName();
-	if (Name.Contains(TEXT("Fire")) && !Name.Contains(TEXT("Dry")) && !Name.Contains(TEXT("Out")))
+	// The pack's weapon BP calls RecoilAnimation->Play() per shot, which
+	// stamps LastShotTime; GetDelta() (time since last shot) shrinking
+	// between ticks is therefore a shot.
+	const float Delta = CachedRecoilComp->GetDelta();
+	if (Delta < PrevShotDelta && Delta < 0.5f)
 	{
 		FireViewmodelProjectile();
 	}
+	PrevShotDelta = Delta;
 }
 
 USkeletalMeshComponent* AALCharacter::FindViewmodelWeaponMesh() const

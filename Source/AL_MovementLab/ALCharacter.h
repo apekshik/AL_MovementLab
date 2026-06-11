@@ -171,6 +171,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
 	float ViewmodelGaitInterpSpeed = 8.f;
 
+	// Eye/arms dip applied on every successful jump (ground, double, wall).
+	// The pack has no jump anim; its "jump" read is just the fall-state
+	// reaction, which never re-triggers mid-air. 0 disables.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
+	float JumpEyeDipAmount = 7.f;
+
 	// Gait value at full sprint speed. The pack's anim BP reads ~2.0 as
 	// tac-sprint, so the sprint band tops out just below it. Tune live until
 	// the arms show the sprint cycle at 1200.
@@ -200,13 +206,12 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel|Ballistics")
 	float AimTraceDistance = 50000.f;
 
-	TWeakObjectPtr<UAnimInstance> BoundArmsAnim;
 	TWeakObjectPtr<USkeletalMeshComponent> CachedWeaponMesh;
+	TWeakObjectPtr<class URecoilAnimationComponent> CachedRecoilComp;
 	FName CachedMuzzleSocket;
+	float PrevShotDelta = FLT_MAX;
 
-	UFUNCTION()
-	void OnArmsMontageStarted(UAnimMontage* Montage);
-	void EnsureArmsMontageBinding();
+	void PollViewmodelShots();
 	void FireViewmodelProjectile();
 	USkeletalMeshComponent* FindViewmodelWeaponMesh() const;
 };
