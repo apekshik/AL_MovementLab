@@ -132,23 +132,46 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
 	bool bDriveViewmodelMovementState = true;
 
-	// Also write the pack's DesiredSpeed (their gait normalizes speed against
-	// it; their inputs used to set it, so ours must).
+	// Write the pack's DesiredSpeed (their gait treats it as movement intent,
+	// not a normalizer - feeding our speed caps reads as permanent sprint).
+	// Off: direct gait drive is the working setup.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
-	bool bFeedViewmodelDesiredSpeed = true;
+	bool bFeedViewmodelDesiredSpeed = false;
 
 	// Bypass their gait math entirely: write Gait (0=idle..1=walk..2=sprint..
 	// 3=tac-sprint) straight onto the pawn and ViewmodelController.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
-	bool bFeedViewmodelGaitDirect = false;
+	bool bFeedViewmodelGaitDirect = true;
 
 	// Min ground speed before the arms play the sprint cycle.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
 	float SprintAnimSpeedThreshold = 600.f;
 
-	// Momentum at which sprint arms upgrade to the tac-sprint pump.
+	// Tac-sprint arms as a high-momentum reward. Disabled for now; sprint
+	// band covers all fast movement.
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
-	float TacSprintMomentumThreshold = 60.f;
+	bool bEnableTacSprintAnim = false;
+
+	// Momentum at which sprint arms upgrade to the tac-sprint pump.
+	// Sprint alone builds ~30/s, so 85 keeps tac a sustained-speed reward.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
+	float TacSprintMomentumThreshold = 85.f;
+
+	// Eases gait band transitions; 0 = snap instantly.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
+	float ViewmodelGaitInterpSpeed = 8.f;
+
+	// Gait value at full sprint speed. The pack's anim BP reads ~2.0 as
+	// tac-sprint, so the sprint band tops out just below it. Tune live until
+	// the arms show the sprint cycle at 1200.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
+	float GaitSprintMax = 1.9f;
+
+	// Gait value written for the momentum tac-sprint reward.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Viewmodel")
+	float GaitTacValue = 3.f;
+
+	float CurrentViewmodelGait = 0.f;
 
 	void UpdateViewmodelMovementState();
 

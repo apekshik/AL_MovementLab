@@ -474,46 +474,52 @@ void AALCharacter::UpdateViewmodelMovementState()
 		const float Speed = GetVelocity().Size2D();
 		const float WalkCap = ALMove->IsCrouchWalking() ? ALMove->GetCrouchWalkSpeed() : ALMove->GetWalkSpeed();
 		const float SprintCap = FMath::Max(ALMove->GetSprintSpeed(), WalkCap + 1.f);
-		double Gait;
-		if (ALMove->IsSliding())
+		float Gait;
+		if (ALMove->IsSliding() || ALMove->IsWallRunning())
 		{
-			Gait = 0.0;
+			Gait = 0.f;                                   // weapon held steady
 		}
 		else if (Speed <= WalkCap)
 		{
-			Gait = Speed / WalkCap;                              // 0..1 idle->walk
+			Gait = Speed / WalkCap;                       // 0..1 idle->walk
 		}
 		else
 		{
-			// Clamp so slide-boosted speeds don't spill into the tac band
-			Gait = FMath::Min(1.0 + (Speed - WalkCap) / (SprintCap - WalkCap), 2.0); // 1..2 walk->sprint
+			// Walk->sprint band, clamped so slide-boosted speeds don't
+			// spill into the anim BP's tac zone
+			Gait = FMath::Min(1.f + (Speed - WalkCap) / (SprintCap - WalkCap) * (GaitSprintMax - 1.f), GaitSprintMax);
 		}
-		if ((ALMove->IsSprinting() || ALMove->IsWallRunning()) && ALMove->GetMomentum() >= TacSprintMomentumThreshold)
+		if (bEnableTacSprintAnim && ALMove->IsSprinting() && !ALMove->IsWallRunning() && ALMove->GetMomentum() >= TacSprintMomentumThreshold)
 		{
-			Gait = 3.0;                                   // tac-sprint band
+			Gait = GaitTacValue;                          // tac-sprint: sustained-momentum reward
 		}
-		SetFloatPropByName(this, TEXT("Gait"), Gait);
+
+		CurrentViewmodelGait = (ViewmodelGaitInterpSpeed > 0.f)
+			? FMath::FInterpTo(CurrentViewmodelGait, Gait, GetWorld()->GetDeltaSeconds(), ViewmodelGaitInterpSpeed)
+			: Gait;
+
+		SetFloatPropByName(this, TEXT("Gait"), CurrentViewmodelGait);
 		for (UActorComponent* Comp : GetComponents())
 		{
 			if (Comp && Comp->GetClass()->GetName().StartsWith(TEXT("ViewmodelController")))
 			{
-				SetFloatPropByName(Comp, TEXT("Gait"), Gait);
+				SetFloatPropByName(Comp, TEXT("Gait"), CurrentViewmodelGait);
 			}
 		}
 	}
 
 	const float Speed2D = GetVelocity().Size2D();
 
-	// Map our state machine onto the pack's E_MovementState. Slides hold the
-	// weapon steady (Idle); tac-sprint is the visual reward for momentum.
+	// Map our state machine onto the pack's E_MovementState. Slides and wall
+	// runs hold the weapon steady (Idle); tac-sprint rewards sustained momentum.
 	const TCHAR* Desired = TEXT("Idle");
-	if (ALMove->IsSliding())
+	if (ALMove->IsSliding() || ALMove->IsWallRunning())
 	{
 		Desired = TEXT("Idle");
 	}
-	else if ((ALMove->IsSprinting() || ALMove->IsWallRunning()) && Speed2D >= SprintAnimSpeedThreshold)
+	else if (ALMove->IsSprinting() && Speed2D >= SprintAnimSpeedThreshold)
 	{
-		Desired = (ALMove->GetMomentum() >= TacSprintMomentumThreshold) ? TEXT("TacSprint") : TEXT("Sprint");
+		Desired = (bEnableTacSprintAnim && ALMove->GetMomentum() >= TacSprintMomentumThreshold) ? TEXT("TacSprint") : TEXT("Sprint");
 	}
 	else if (Speed2D > 25.f)
 	{
@@ -639,7 +645,7 @@ void AALCharacter::UpdateViewmodelDebug()
 		}
 	}
 
-	FString MoveState = TEXT("WALK");
+	FString MoveState = (GetVelocity().Size2D() > 25.f) ? TEXT("WALK") : TEXT("IDLE");
 	if (UALCharacterMovementComponent* ALMove = GetALMovementComponent())
 	{
 		if (ALMove->IsWallRunning())        { MoveState = TEXT("WALLRUN"); }
