@@ -655,7 +655,8 @@ void AALCharacter::UpdateViewmodelDebug()
 
 	const uint64 Key = (uint64)((PTRINT)this);
 	GEngine->AddOnScreenDebugMessage(Key + 10, 0.f, FColor::Orange,
-		FString::Printf(TEXT("Weapon: %s  |  Mode: %s"), *WeaponName, *ModeName));
+		FString::Printf(TEXT("Weapon: %s  |  Mode: %s  |  Muzzle: %s"),
+			*WeaponName, *ModeName, *CachedMuzzleSocket.ToString()));
 	GEngine->AddOnScreenDebugMessage(Key + 11, 0.f, FColor::Yellow,
 		FString::Printf(TEXT("Montage: %s"), Montage ? *Montage->GetName() : TEXT("none")));
 	GEngine->AddOnScreenDebugMessage(Key + 12, 0.f, FColor::Cyan,
@@ -723,8 +724,8 @@ void AALCharacter::FireViewmodelProjectile()
 	}
 	const FVector CameraForward = CamRot.Vector();
 
-	// Muzzle: socket on the pack's weapon mesh (cached per mesh); fall back
-	// to just in front of the camera.
+	// Muzzle: socket or bone on the pack's weapon mesh (cached per mesh);
+	// fall back to just in front of the camera.
 	FVector SpawnLocation = CamLoc + CameraForward * 30.f;
 	USkeletalMeshComponent* WeaponMesh = FindViewmodelWeaponMesh();
 	if (WeaponMesh)
@@ -733,11 +734,27 @@ void AALCharacter::FireViewmodelProjectile()
 		{
 			CachedWeaponMesh = WeaponMesh;
 			CachedMuzzleSocket = NAME_None;
-			for (const FName& Socket : WeaponMesh->GetAllSocketNames())
+			static const TCHAR* MuzzleTerms[] = { TEXT("Muzzle"), TEXT("Barrel"), TEXT("Flash") };
+			for (const TCHAR* Term : MuzzleTerms)
 			{
-				if (Socket.ToString().Contains(TEXT("Muzzle")))
+				for (const FName& Socket : WeaponMesh->GetAllSocketNames())
 				{
-					CachedMuzzleSocket = Socket;
+					if (Socket.ToString().Contains(Term))
+					{
+						CachedMuzzleSocket = Socket;
+						break;
+					}
+				}
+				for (int32 i = 0; CachedMuzzleSocket.IsNone() && i < WeaponMesh->GetNumBones(); ++i)
+				{
+					const FName Bone = WeaponMesh->GetBoneName(i);
+					if (Bone.ToString().Contains(Term))
+					{
+						CachedMuzzleSocket = Bone;
+					}
+				}
+				if (!CachedMuzzleSocket.IsNone())
+				{
 					break;
 				}
 			}

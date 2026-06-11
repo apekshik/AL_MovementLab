@@ -89,6 +89,13 @@ void AALProjectile::BeginPlay()
 	// Bind hit event
 	CollisionComponent->OnComponentHit.AddDynamic(this, &AALProjectile::OnHit);
 
+	// Never collide with whoever fired us - the spawn point can sit inside
+	// the owning pawn's capsule
+	if (AActor* MyOwner = GetOwner())
+	{
+		CollisionComponent->IgnoreActorWhenMoving(MyOwner, true);
+	}
+
 	// Default content fallbacks, kept out of the constructor so a missing
 	// asset can never break CDO construction; BP-assigned values win
 	if (!TracerMaterial)
