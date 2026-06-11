@@ -766,16 +766,16 @@ void AALCharacter::FireViewmodelProjectile()
 			SpawnLocation = WeaponMesh->GetSocketLocation(CachedMuzzleSocket);
 			if (CachedMuzzleSocket == FName(TEXT("AimPoint")))
 			{
-				// AimPoint sits on the sight line mid-receiver; push it to
-				// the front plane of the weapon bounds = barrel tip.
+				// No real muzzle socket on pack skeletons, and AimPoint is
+				// the sight line (reads as screen center). Use the front-
+				// center of the weapon bounds instead - the bore region.
 				const FBoxSphereBounds MeshBounds = WeaponMesh->Bounds;
 				const FVector Ext = MeshBounds.BoxExtent;
 				const float ExtentAlongForward =
 					FMath::Abs(Ext.X * CameraForward.X) +
 					FMath::Abs(Ext.Y * CameraForward.Y) +
 					FMath::Abs(Ext.Z * CameraForward.Z);
-				const float ForwardDist = FVector::DotProduct(MeshBounds.Origin - SpawnLocation, CameraForward) + ExtentAlongForward;
-				SpawnLocation += CameraForward * FMath::Max(ForwardDist, 0.f);
+				SpawnLocation = MeshBounds.Origin + CameraForward * ExtentAlongForward;
 			}
 		}
 	}
