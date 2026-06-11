@@ -58,6 +58,12 @@ protected:
 	bool bIsCrouching;
 	bool bWantsToMoveForward;
 
+	// ---- Look Sensitivity ----
+	// Global look multiplier on top of the raw axis. Tune live in PIE to
+	// match your Apex cm/360 (1.0 = engine default).
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Input|Look", meta = (ClampMin = "0.01", ClampMax = "10.0"))
+	float MouseSensitivity = 1.f;
+
 	// ---- Input Handlers ----
 	void MoveForward(float Value);
 	void MoveRight(float Value);

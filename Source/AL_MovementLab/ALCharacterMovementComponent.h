@@ -24,7 +24,13 @@ public:
 
 	virtual void ProcessLanded(const FHitResult& Hit, float remainingTime, int32 Iterations) override;
 
+	// Speed authority lives in this component's state, not in MaxWalkSpeed:
+	// anything external (blueprints, asset packs) writing MaxWalkSpeed must
+	// never affect gameplay speed.
+	virtual float GetMaxSpeed() const override;
+
 	void SetIsSprinting(bool bNewSprinting);
+	bool IsSprinting() const { return bIsSprinting; }
 	void StartCrouch();
 	void StopCrouch();
 	bool IsSliding() const { return bIsSliding; }

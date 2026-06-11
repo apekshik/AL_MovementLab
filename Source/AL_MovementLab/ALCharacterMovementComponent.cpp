@@ -297,6 +297,31 @@ void UALCharacterMovementComponent::TickComponent(
 #endif
 }
 
+// ---- Max Speed Authority ----
+
+float UALCharacterMovementComponent::GetMaxSpeed() const
+{
+	switch (MovementMode)
+	{
+	case MOVE_Walking:
+	case MOVE_NavWalking:
+	case MOVE_Falling:
+		// Slides keep the sprint cap so the slide tail decays exactly as it
+		// did when MaxWalkSpeed was left at SprintSpeed on slide entry.
+		if (bIsSliding)
+		{
+			return SprintSpeed;
+		}
+		if (bIsCrouchWalking)
+		{
+			return CrouchWalkSpeed;
+		}
+		return bIsSprinting ? SprintSpeed : WalkSpeed;
+	default:
+		return Super::GetMaxSpeed();
+	}
+}
+
 // ---- Sprint ----
 
 void UALCharacterMovementComponent::SetIsSprinting(bool bNewSprinting)
