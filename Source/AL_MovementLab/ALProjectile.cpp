@@ -182,7 +182,9 @@ void AALProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPri
 			}
 		}
 
-		// Destroy projectile
-		Destroy();
 	}
+
+	// A blocked projectile is spent no matter what stopped it - never leave
+	// a frozen tracer hanging in the air
+	Destroy();
 }

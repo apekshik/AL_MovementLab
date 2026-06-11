@@ -734,7 +734,9 @@ void AALCharacter::FireViewmodelProjectile()
 		{
 			CachedWeaponMesh = WeaponMesh;
 			CachedMuzzleSocket = NAME_None;
-			static const TCHAR* MuzzleTerms[] = { TEXT("Muzzle"), TEXT("Barrel"), TEXT("Flash") };
+			// Pack skeletons ship no muzzle socket; AimPoint (sight line,
+			// present on every weapon) is the last-resort anchor.
+			static const TCHAR* MuzzleTerms[] = { TEXT("Muzzle"), TEXT("Barrel"), TEXT("Flash"), TEXT("AimPoint") };
 			for (const TCHAR* Term : MuzzleTerms)
 			{
 				for (const FName& Socket : WeaponMesh->GetAllSocketNames())
@@ -762,6 +764,19 @@ void AALCharacter::FireViewmodelProjectile()
 		if (!CachedMuzzleSocket.IsNone())
 		{
 			SpawnLocation = WeaponMesh->GetSocketLocation(CachedMuzzleSocket);
+			if (CachedMuzzleSocket == FName(TEXT("AimPoint")))
+			{
+				// AimPoint sits on the sight line mid-receiver; push it to
+				// the front plane of the weapon bounds = barrel tip.
+				const FBoxSphereBounds MeshBounds = WeaponMesh->Bounds;
+				const FVector Ext = MeshBounds.BoxExtent;
+				const float ExtentAlongForward =
+					FMath::Abs(Ext.X * CameraForward.X) +
+					FMath::Abs(Ext.Y * CameraForward.Y) +
+					FMath::Abs(Ext.Z * CameraForward.Z);
+				const float ForwardDist = FVector::DotProduct(MeshBounds.Origin - SpawnLocation, CameraForward) + ExtentAlongForward;
+				SpawnLocation += CameraForward * FMath::Max(ForwardDist, 0.f);
+			}
 		}
 	}
 
